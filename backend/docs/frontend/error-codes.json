@@ -1,0 +1,476 @@
+[
+  {
+    "name": "COMMON_4000",
+    "status": 400,
+    "code": "COMMON-4000",
+    "message": "입력값이 올바르지 않습니다."
+  },
+  {
+    "name": "COMMON_4001",
+    "status": 400,
+    "code": "COMMON-4001",
+    "message": "해당 요청에는 좌표 필드를 담을 수 없습니다."
+  },
+  {
+    "name": "COMMON_4002",
+    "status": 400,
+    "code": "COMMON-4002",
+    "message": "필수 파라미터가 없습니다."
+  },
+  {
+    "name": "COMMON_4003",
+    "status": 400,
+    "code": "COMMON-4003",
+    "message": "파라미터 타입이 올바르지 않습니다."
+  },
+  {
+    "name": "COMMON_4004",
+    "status": 400,
+    "code": "COMMON-4004",
+    "message": "요청 본문을 해석할 수 없습니다."
+  },
+  {
+    "name": "COMMON_4040",
+    "status": 404,
+    "code": "COMMON-4040",
+    "message": "요청한 리소스를 찾을 수 없습니다."
+  },
+  {
+    "name": "COMMON_4050",
+    "status": 405,
+    "code": "COMMON-4050",
+    "message": "지원하지 않는 HTTP 메서드입니다."
+  },
+  {
+    "name": "COMMON_4090",
+    "status": 409,
+    "code": "COMMON-4090",
+    "message": "현재 상태에서 처리할 수 없는 요청입니다."
+  },
+  {
+    "name": "COMMON_4130",
+    "status": 413,
+    "code": "COMMON-4130",
+    "message": "요청 본문이 너무 큽니다."
+  },
+  {
+    "name": "COMMON_4150",
+    "status": 415,
+    "code": "COMMON-4150",
+    "message": "지원하지 않는 미디어 타입입니다."
+  },
+  {
+    "name": "COMMON_5000",
+    "status": 500,
+    "code": "COMMON-5000",
+    "message": "서버 내부 오류가 발생했습니다."
+  },
+  {
+    "name": "AUTH_4011",
+    "status": 401,
+    "code": "AUTH-4011",
+    "message": "이메일 또는 비밀번호가 올바르지 않습니다."
+  },
+  {
+    "name": "AUTH_4012",
+    "status": 401,
+    "code": "AUTH-4012",
+    "message": "토큰이 만료되었습니다."
+  },
+  {
+    "name": "AUTH_4013",
+    "status": 401,
+    "code": "AUTH-4013",
+    "message": "로그인이 필요합니다."
+  },
+  {
+    "name": "AUTH_4014",
+    "status": 401,
+    "code": "AUTH-4014",
+    "message": "다시 로그인해 주세요."
+  },
+  {
+    "name": "AUTH_4015",
+    "status": 401,
+    "code": "AUTH-4015",
+    "message": "이미 사용된 토큰입니다. 다시 로그인해 주세요."
+  },
+  {
+    "name": "AUTH_4031",
+    "status": 403,
+    "code": "AUTH-4031",
+    "message": "로그인 시도 초과로 계정이 잠겼습니다."
+  },
+  {
+    "name": "AUTH_4032",
+    "status": 403,
+    "code": "AUTH-4032",
+    "message": "접근 권한이 없습니다."
+  },
+  {
+    "name": "AUTH_4090",
+    "status": 409,
+    "code": "AUTH-4090",
+    "message": "이미 가입된 이메일입니다."
+  },
+  {
+    "name": "USER_4030",
+    "status": 403,
+    "code": "USER-4030",
+    "message": "필수 약관에 동의해야 이용할 수 있습니다."
+  },
+  {
+    "name": "USER_4031",
+    "status": 403,
+    "code": "USER-4031",
+    "message": "위치기반서비스 이용에 동의해야 스탬프를 받을 수 있습니다."
+  },
+  {
+    "name": "USER_4040",
+    "status": 404,
+    "code": "USER-4040",
+    "message": "사용자를 찾을 수 없습니다."
+  },
+  {
+    "name": "COURSE_4000",
+    "status": 400,
+    "code": "COURSE-4000",
+    "message": "어느 코스에도 속하지 않은 사찰입니다."
+  },
+  {
+    "name": "COURSE_4040",
+    "status": 404,
+    "code": "COURSE-4040",
+    "message": "권역을 찾을 수 없습니다."
+  },
+  {
+    "name": "COURSE_4001",
+    "status": 400,
+    "code": "COURSE-4001",
+    "message": "구절 번호는 자리 번호와 같아야 합니다."
+  },
+  {
+    "name": "COURSE_4041",
+    "status": 404,
+    "code": "COURSE-4041",
+    "message": "코스를 찾을 수 없습니다."
+  },
+  {
+    "name": "COURSE_4092",
+    "status": 409,
+    "code": "COURSE-4092",
+    "message": "활성 코스에 배정된 사찰입니다."
+  },
+  {
+    "name": "COURSE_4093",
+    "status": 409,
+    "code": "COURSE-4093",
+    "message": "이미 다른 코스에 배정된 사찰입니다."
+  },
+  {
+    "name": "SITE_4040",
+    "status": 404,
+    "code": "SITE-4040",
+    "message": "사찰을 찾을 수 없습니다."
+  },
+  {
+    "name": "SITE_4090",
+    "status": 409,
+    "code": "SITE-4090",
+    "message": "현재 순례를 진행할 수 없는 사찰입니다."
+  },
+  {
+    "name": "SITE_5001",
+    "status": 500,
+    "code": "SITE-5001",
+    "message": "표시할 문구가 준비되지 않았습니다."
+  },
+  {
+    "name": "VERSE_4040",
+    "status": 404,
+    "code": "VERSE-4040",
+    "message": "게송을 찾을 수 없습니다."
+  },
+  {
+    "name": "VERSE_4041",
+    "status": 404,
+    "code": "VERSE-4041",
+    "message": "미션을 찾을 수 없습니다."
+  },
+  {
+    "name": "PILGRIMAGE_4030",
+    "status": 403,
+    "code": "PILGRIMAGE-4030",
+    "message": "본인의 순례가 아닙니다."
+  },
+  {
+    "name": "PILGRIMAGE_4040",
+    "status": 404,
+    "code": "PILGRIMAGE-4040",
+    "message": "순례 기록을 찾을 수 없습니다."
+  },
+  {
+    "name": "STAMP_4000",
+    "status": 400,
+    "code": "STAMP-4000",
+    "message": "사찰 반경을 벗어났습니다."
+  },
+  {
+    "name": "STAMP_4001",
+    "status": 400,
+    "code": "STAMP-4001",
+    "message": "GPS 정확도가 낮습니다. 증빙 제출로 진행해 주세요."
+  },
+  {
+    "name": "STAMP_4002",
+    "status": 400,
+    "code": "STAMP-4002",
+    "message": "QR 정보가 올바르지 않습니다."
+  },
+  {
+    "name": "STAMP_4003",
+    "status": 400,
+    "code": "STAMP-4003",
+    "message": "QR 유효 시간이 지났습니다. 다시 스캔해 주세요."
+  },
+  {
+    "name": "STAMP_4004",
+    "status": 400,
+    "code": "STAMP-4004",
+    "message": "다른 사찰의 QR 입니다."
+  },
+  {
+    "name": "STAMP_4031",
+    "status": 403,
+    "code": "STAMP-4031",
+    "message": "본인의 스탬프가 아닙니다."
+  },
+  {
+    "name": "STAMP_4040",
+    "status": 404,
+    "code": "STAMP-4040",
+    "message": "스탬프를 찾을 수 없습니다."
+  },
+  {
+    "name": "STAMP_4090",
+    "status": 409,
+    "code": "STAMP-4090",
+    "message": "이미 완료된 스탬프입니다."
+  },
+  {
+    "name": "STAMP_4091",
+    "status": 409,
+    "code": "STAMP-4091",
+    "message": "인증 시간이 지났습니다. 도착 확인부터 다시 진행해 주세요."
+  },
+  {
+    "name": "STAMP_4092",
+    "status": 409,
+    "code": "STAMP-4092",
+    "message": "현재 상태에서는 처리할 수 없습니다."
+  },
+  {
+    "name": "STAMP_4093",
+    "status": 409,
+    "code": "STAMP-4093",
+    "message": "심사 중인 스탬프입니다."
+  },
+  {
+    "name": "STAMP_4094",
+    "status": 409,
+    "code": "STAMP-4094",
+    "message": "증빙 제출이 허용되지 않는 상태입니다."
+  },
+  {
+    "name": "STAMP_4291",
+    "status": 429,
+    "code": "STAMP-4291",
+    "message": "오늘 받을 수 있는 스탬프를 모두 받았습니다."
+  },
+  {
+    "name": "STAMP_4292",
+    "status": 429,
+    "code": "STAMP-4292",
+    "message": "예외 접수는 하루 2건까지입니다."
+  },
+  {
+    "name": "UPLOAD_4001",
+    "status": 400,
+    "code": "UPLOAD-4001",
+    "message": "업로드 키가 올바르지 않습니다."
+  },
+  {
+    "name": "THINKBOX_4030",
+    "status": 403,
+    "code": "THINKBOX-4030",
+    "message": "본인의 글이 아닙니다."
+  },
+  {
+    "name": "THINKBOX_4040",
+    "status": 404,
+    "code": "THINKBOX-4040",
+    "message": "생각상자 글을 찾을 수 없습니다."
+  },
+  {
+    "name": "MEDITATION_4040",
+    "status": 404,
+    "code": "MEDITATION-4040",
+    "message": "명상 콘텐츠를 찾을 수 없습니다."
+  },
+  {
+    "name": "REWARD_4001",
+    "status": 400,
+    "code": "REWARD-4001",
+    "message": "수령 신청 대상이 아닙니다."
+  },
+  {
+    "name": "REWARD_4040",
+    "status": 404,
+    "code": "REWARD-4040",
+    "message": "보상을 찾을 수 없습니다."
+  },
+  {
+    "name": "REWARD_4090",
+    "status": 409,
+    "code": "REWARD-4090",
+    "message": "보상 수령 조건을 충족하지 않았습니다."
+  },
+  {
+    "name": "REWARD_4092",
+    "status": 409,
+    "code": "REWARD-4092",
+    "message": "이미 신청되었거나 처리된 보상입니다."
+  },
+  {
+    "name": "CERT_4041",
+    "status": 404,
+    "code": "CERT-4041",
+    "message": "인증서를 찾을 수 없습니다."
+  },
+  {
+    "name": "CERT_4091",
+    "status": 409,
+    "code": "CERT-4091",
+    "message": "이미 회수된 인증서입니다."
+  },
+  {
+    "name": "MS_4002",
+    "status": 400,
+    "code": "MS-4002",
+    "message": "원고에 연락처·링크를 넣을 수 없습니다."
+  },
+  {
+    "name": "MS_4030",
+    "status": 403,
+    "code": "MS-4030",
+    "message": "자신의 원고는 심사할 수 없습니다."
+  },
+  {
+    "name": "MS_4040",
+    "status": 404,
+    "code": "MS-4040",
+    "message": "원고를 찾을 수 없습니다."
+  },
+  {
+    "name": "MS_4090",
+    "status": 409,
+    "code": "MS-4090",
+    "message": "현재 상태에서는 처리할 수 없습니다."
+  },
+  {
+    "name": "MS_4091",
+    "status": 409,
+    "code": "MS-4091",
+    "message": "같은 내용의 원고가 이미 있습니다."
+  },
+  {
+    "name": "MS_4092",
+    "status": 409,
+    "code": "MS-4092",
+    "message": "변형 상한에 도달했습니다."
+  },
+  {
+    "name": "MS_4093",
+    "status": 409,
+    "code": "MS-4093",
+    "message": "이 사찰의 미션 원고가 준비되지 않았습니다."
+  },
+  {
+    "name": "EBOOK_4001",
+    "status": 400,
+    "code": "EBOOK-4001",
+    "message": "기록이 없어 전자책을 만들 수 없습니다."
+  },
+  {
+    "name": "EBOOK_4030",
+    "status": 403,
+    "code": "EBOOK-4030",
+    "message": "열람 권한이 없습니다."
+  },
+  {
+    "name": "EBOOK_4040",
+    "status": 404,
+    "code": "EBOOK-4040",
+    "message": "전자책을 찾을 수 없습니다."
+  },
+  {
+    "name": "EBOOK_4090",
+    "status": 409,
+    "code": "EBOOK-4090",
+    "message": "아직 파일이 준비되지 않았습니다."
+  },
+  {
+    "name": "EBOOK_4092",
+    "status": 409,
+    "code": "EBOOK-4092",
+    "message": "만드는 중인 전자책이 있습니다. 끝난 뒤에 다시 요청해 주세요."
+  },
+  {
+    "name": "EBOOK_4290",
+    "status": 429,
+    "code": "EBOOK-4290",
+    "message": "하루에 만들 수 있는 전자책 수를 넘었습니다."
+  },
+  {
+    "name": "PRINT_4001",
+    "status": 400,
+    "code": "PRINT-4001",
+    "message": "만들어진 전자책만 인쇄할 수 있습니다."
+  },
+  {
+    "name": "PRINT_4040",
+    "status": 404,
+    "code": "PRINT-4040",
+    "message": "인쇄 신청을 찾을 수 없습니다."
+  },
+  {
+    "name": "PRINT_4090",
+    "status": 409,
+    "code": "PRINT-4090",
+    "message": "현재 상태에서는 처리할 수 없습니다."
+  },
+  {
+    "name": "PRINT_4091",
+    "status": 409,
+    "code": "PRINT-4091",
+    "message": "이미 신청한 주문이 있습니다."
+  },
+  {
+    "name": "KAKAO_5030",
+    "status": 503,
+    "code": "KAKAO-5030",
+    "message": "카카오 API 키가 설정되지 않았습니다."
+  },
+  {
+    "name": "KAKAO_5031",
+    "status": 503,
+    "code": "KAKAO-5031",
+    "message": "카카오 장소 검색에 실패했습니다."
+  },
+  {
+    "name": "ADMIN_4092",
+    "status": 409,
+    "code": "ADMIN-4092",
+    "message": "현재 상태에서는 처리할 수 없습니다."
+  }
+]
