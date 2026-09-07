@@ -21,7 +21,8 @@ class JwtProviderTest {
         return new AppProperties(
                 new AppProperties.Jwt(jwtSecret, 1800, 7),
                 new AppProperties.Qr(qrSecret, 300),
-                new AppProperties.Cookie(false));
+                new AppProperties.Cookie(false),
+                "http://localhost:5173");   // frontend-url — QR 에 굽는 주소의 앞부분(11-A STEP 3)
     }
 
     private JwtProvider provider() {

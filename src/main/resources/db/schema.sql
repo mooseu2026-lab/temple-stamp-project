@@ -133,8 +133,13 @@ CREATE TABLE IF NOT EXISTS site (
     qr_location_hint VARCHAR(255) NULL,             -- QR 부착 위치 안내 (예: 대웅전 앞 안내판 우측)
     parking_info VARCHAR(500) NULL,                 -- 주차 안내 (라이더 정보 포함)
     access_info VARCHAR(500) NULL,                  -- 진입로 안내 (포장 여부·경사)
-    -- 공양 가능 등급. NONE(없음) / TEMPLE_MEAL(사찰음식·템플스테이) / PUBLIC_MEAL(대중공양) / NEARBY(인근 식당).
-    -- NULL 은 "없다" 가 아니라 "아직 모른다" 다 — 확인 전에 NONE 을 넣으면 안 된다(C1).
+    -- 공양 가능 등급 — 값 4종(C1 보강 · 2026-09-08 예성 확인).
+    --   TEMPLE_MEAL  사찰음식 특화·체험(명장 등). 확인된 6곳뿐이다
+    --   RESERVATION  공양은 있고 사전 예약·시간 확인이 필요하다 — <b>기본값</b>
+    --   NONE         공양 없음이 <b>확인된</b> 곳. 확인 전에는 쓰지 않는다
+    --   NEARBY       경내 공양이 없고 인근 식당을 쓰는 곳. 확인된 곳만
+    -- ★ NULL 도 쓰지 않는다. 대부분의 절에 공양이 있다는 것이 확인됐으므로 "모른다" 로 둘 이유가 없고,
+    --   모르는 것은 "얼마나 미리 연락해야 하는가" 이지 "있는가" 가 아니다.
     meal_available VARCHAR(20) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',    -- 협의 완료(ACTIVE) 사찰만 노출
     seed_key VARCHAR(80) NULL,                      -- v4 시드 멱등 키: REGION:이름:구분. 재실행 시 중복 생성 방지
@@ -145,7 +150,7 @@ CREATE TABLE IF NOT EXISTS site (
     CONSTRAINT chk_site_status CHECK (status IN ('DRAFT','ACTIVE','INACTIVE')),
     CONSTRAINT chk_site_radius CHECK (verify_radius > 0),
     CONSTRAINT chk_site_meal CHECK
-        (meal_available IS NULL OR meal_available IN ('NONE','TEMPLE_MEAL','PUBLIC_MEAL','NEARBY'))
+        (meal_available IS NULL OR meal_available IN ('NONE','TEMPLE_MEAL','RESERVATION','NEARBY'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 8. site_i18n — 사찰 다국어

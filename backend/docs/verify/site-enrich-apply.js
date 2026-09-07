@@ -99,7 +99,8 @@ function readCsv(p) {
       qrLocationHint: cur.qrLocationHint,
       parkingInfo: official ? (withSuffix(r.parkingInfo) || cur.parkingInfo) : null,
       accessInfo: official ? (withSuffix(r.accessInfo) || cur.accessInfo) : null,
-      mealAvailable: official ? (r.mealAvailable || null) : null,
+      // 공양은 등급을 가리지 않는다 — 2026-09-08 예성 확인(대부분의 절에 있다).
+      mealAvailable: r.mealAvailable || null,
       i18n,
     };
     const cs = JSON.parse(sql(`SELECT JSON_OBJECT('lat', latitude, 'lng', longitude) FROM site WHERE site_id = ${id};`));

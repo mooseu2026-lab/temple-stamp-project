@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.net.URI;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,6 +43,8 @@ class RecordIntegrationTest {
     private static final String EMAIL_A = "record-a@test.com";
     private static final String EMAIL_B = "record-b@test.com";
     private static final String PASSWORD = "Test1234!";
+    /** 내용은 보지 않는다 — 있기만 하면 된다. JPEG 머리 두 바이트로 모양만 맞춘다. */
+    private static final byte[] JPEG_BYTES = {(byte) 0xFF, (byte) 0xD8, 0x00, 0x01, 0x02, 0x03};
     private static final String SENTENCE = "처마 끝에 걸린 하늘이 좋아서 한 장 남긴다.";
 
     @Autowired MockMvc mvc;
@@ -121,7 +124,7 @@ class RecordIntegrationTest {
     @Test
     @DisplayName("사진과 문장을 저장하면 photo 1행 · 생각상자 DIRECT 1행")
     void saving_a_photo_also_writes_the_sentence() throws Exception {
-        JsonNode data = json(putPhoto(tokenA, activeSiteId, body(photoKey(userIdA), SENTENCE, false, false))
+        JsonNode data = json(putPhoto(tokenA, activeSiteId, body(storedPhotoKey(tokenA), SENTENCE, false, false))
                 .andExpect(status().isOk())).path("data");
 
         assertThat(data.path("siteId").asLong()).isEqualTo(activeSiteId);
@@ -135,8 +138,8 @@ class RecordIntegrationTest {
     @Test
     @DisplayName("같은 사찰에 다시 저장하면 행이 늘지 않고 교체된다 — 문장이 바뀌면 is_edited 가 켜진다")
     void saving_again_replaces_instead_of_adding() throws Exception {
-        putPhoto(tokenA, activeSiteId, body(photoKey(userIdA), SENTENCE, false, false)).andExpect(status().isOk());
-        String secondKey = photoKey(userIdA);
+        putPhoto(tokenA, activeSiteId, body(storedPhotoKey(tokenA), SENTENCE, false, false)).andExpect(status().isOk());
+        String secondKey = storedPhotoKey(tokenA);
         JsonNode data = json(putPhoto(tokenA, activeSiteId, body(secondKey, "다시 와서 다른 각도로 담았다.", false, true))
                 .andExpect(status().isOk())).path("data");
 
@@ -162,7 +165,7 @@ class RecordIntegrationTest {
     @Test
     @DisplayName("공개되지 않은 사찰에는 남길 수 없다 — 404 SITE-4040")
     void cannot_save_on_a_draft_site() throws Exception {
-        putPhoto(tokenA, draftSiteId, body(photoKey(userIdA), SENTENCE, false, false))
+        putPhoto(tokenA, draftSiteId, body(storedPhotoKey(tokenA), SENTENCE, false, false))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("SITE-4040"));
     }
@@ -178,7 +181,7 @@ class RecordIntegrationTest {
     @Test
     @DisplayName("내 사진 목록과 한 건 조회")
     void list_and_get_my_photos() throws Exception {
-        putPhoto(tokenA, activeSiteId, body(photoKey(userIdA), SENTENCE, false, false)).andExpect(status().isOk());
+        putPhoto(tokenA, activeSiteId, body(storedPhotoKey(tokenA), SENTENCE, false, false)).andExpect(status().isOk());
 
         JsonNode items = json(mvc.perform(get("/api/photos").header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenA))
                 .andExpect(status().isOk())).path("data").path("items");
@@ -318,6 +321,31 @@ class RecordIntegrationTest {
 
     private static String photoKey(long userId) {
         return "PHOTO/" + userId + "/" + UUID.randomUUID() + ".jpg";
+    }
+
+    /**
+     * presign 을 받아 <b>바이트까지 실제로 올린 뒤</b> fileKey 를 돌려준다.
+     * <p>
+     * 11-A STEP 4 부터 저장은 "그 키의 파일이 저장소에 있는가" 를 본다. 그 전에는 키를 지어내도
+     * 통과했고, 그래서 <b>사진이 한 장도 저장된 적이 없다는 사실이 시험에도 걸리지 않았다.</b>
+     * 이 헬퍼가 프론트가 밟는 길(presign → PUT → 제출)을 그대로 밟는다.
+     */
+    private String storedPhotoKey(String token) throws Exception {
+        JsonNode data = json(mvc.perform(get("/api/uploads/presign?purpose=PHOTO&contentType=image/jpeg")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())).path("data");
+
+        // uploadUrl 은 {endpoint}/{bucket}/{fileKey}?expires=..&signature=.. 다(S3 와 같은 모양).
+        // MockMvc 에는 앞의 주소를 떼고 경로부터 넘긴다.
+        String uploadUrl = data.path("uploadUrl").asText();
+        URI uri = URI.create(uploadUrl.substring(uploadUrl.indexOf("/api/uploads")));
+        mvc.perform(put(uri)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.IMAGE_JPEG)
+                        .content(JPEG_BYTES))
+                .andExpect(status().isCreated());
+
+        return data.path("fileKey").asText();
     }
 
     private static String body(String key, String sentence, boolean otherFace, boolean isPrivate) {

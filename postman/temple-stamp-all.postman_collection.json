@@ -1182,7 +1182,9 @@
 								"type": "text/javascript",
 								"exec": [
 									"pm.test('200', () => pm.response.to.have.status(200));",
-									"pm.environment.set('wdPhotoKey', pm.response.json().data.fileKey);"
+									"pm.environment.set('wdPhotoKey', pm.response.json().data.fileKey);",
+									"pm.environment.set('wdUploadUrl', pm.response.json().data.uploadUrl);",
+									"pm.environment.set('wdUploadUrlRest', pm.response.json().data.uploadUrl.split('/api/uploads/')[1]);"
 								]
 							}
 						}
@@ -1215,6 +1217,39 @@
 									"value": "image/jpeg"
 								}
 							]
+						}
+					}
+				},
+				{
+					"name": "U-D0d-up 바이트를 실제로 올린다 (챕터 11-A)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// STEP 4 로 서버가 바이트를 받는다. 키만 받고 올리지 않으면 사진 저장이 UPLOAD-4001 로 막힌다.",
+									"pm.test('201 — 바이트가 저장소에 들어갔다', () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{wdToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "image/jpeg"
+							}
+						],
+						"url": "{{baseUrl}}/api/uploads/{{wdUploadUrlRest}}",
+						"body": {
+							"mode": "raw",
+							"raw": "\\xFF\\xD8\\xFF\\xE0 temple-stamp newman upload \\xFF\\xD9"
 						}
 					}
 				},
@@ -3302,7 +3337,9 @@
 									"const uid = pm.environment.get('userId');",
 									"pm.test('PHOTO/{userId}/…jpg', () => pm.expect(d.fileKey).to.match(new RegExp('^PHOTO/' + uid + '/[0-9a-f-]{36}\\\\.jpg$')));",
 									"pm.test('uploadUrl 이 있다', () => pm.expect(d.uploadUrl).to.be.a('string').and.not.empty);",
-									"pm.environment.set('photoKey', d.fileKey);"
+									"pm.environment.set('photoKey', d.fileKey);",
+									"pm.environment.set('vUploadUrl', pm.response.json().data.uploadUrl);",
+									"pm.environment.set('vUploadUrlRest', pm.response.json().data.uploadUrl.split('/api/uploads/')[1]);"
 								]
 							}
 						}
@@ -3335,6 +3372,39 @@
 									"value": "image/jpeg"
 								}
 							]
+						}
+					}
+				},
+				{
+					"name": "V01-up 바이트를 실제로 올린다 (챕터 11-A)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// STEP 4 로 서버가 바이트를 받는다. 키만 받고 올리지 않으면 사진 저장이 UPLOAD-4001 로 막힌다.",
+									"pm.test('201 — 바이트가 저장소에 들어갔다', () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "image/jpeg"
+							}
+						],
+						"url": "{{baseUrl}}/api/uploads/{{vUploadUrlRest}}",
+						"body": {
+							"mode": "raw",
+							"raw": "\\xFF\\xD8\\xFF\\xE0 temple-stamp newman upload \\xFF\\xD9"
 						}
 					}
 				},
@@ -3438,7 +3508,9 @@
 								"type": "text/javascript",
 								"exec": [
 									"pm.test('200', () => pm.response.to.have.status(200));",
-									"pm.test('.png', () => pm.expect(pm.response.json().data.fileKey).to.match(/\\.png$/));"
+									"pm.test('.png', () => pm.expect(pm.response.json().data.fileKey).to.match(/\\.png$/));",
+									"pm.environment.set('vPngUploadUrl', pm.response.json().data.uploadUrl);",
+									"pm.environment.set('vPngUploadUrlRest', pm.response.json().data.uploadUrl.split('/api/uploads/')[1]);"
 								]
 							}
 						}
@@ -3471,6 +3543,39 @@
 									"value": "image/png"
 								}
 							]
+						}
+					}
+				},
+				{
+					"name": "V03b-up 바이트를 실제로 올린다 (챕터 11-A)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// STEP 4 로 서버가 바이트를 받는다. 키만 받고 올리지 않으면 사진 저장이 UPLOAD-4001 로 막힌다.",
+									"pm.test('201 — 바이트가 저장소에 들어갔다', () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "image/png"
+							}
+						],
+						"url": "{{baseUrl}}/api/uploads/{{vPngUploadUrlRest}}",
+						"body": {
+							"mode": "raw",
+							"raw": "\\xFF\\xD8\\xFF\\xE0 temple-stamp newman upload \\xFF\\xD9"
 						}
 					}
 				},
@@ -3528,7 +3633,9 @@
 								"type": "text/javascript",
 								"exec": [
 									"pm.test('200', () => pm.response.to.have.status(200));",
-									"pm.environment.set('photoKey2', pm.response.json().data.fileKey);"
+									"pm.environment.set('photoKey2', pm.response.json().data.fileKey);",
+									"pm.environment.set('vUploadUrl2', pm.response.json().data.uploadUrl);",
+									"pm.environment.set('vUploadUrl2Rest', pm.response.json().data.uploadUrl.split('/api/uploads/')[1]);"
 								]
 							}
 						}
@@ -3561,6 +3668,39 @@
 									"value": "image/jpeg"
 								}
 							]
+						}
+					}
+				},
+				{
+					"name": "V05a-up 바이트를 실제로 올린다 (챕터 11-A)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// STEP 4 로 서버가 바이트를 받는다. 키만 받고 올리지 않으면 사진 저장이 UPLOAD-4001 로 막힌다.",
+									"pm.test('201 — 바이트가 저장소에 들어갔다', () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "image/jpeg"
+							}
+						],
+						"url": "{{baseUrl}}/api/uploads/{{vUploadUrl2Rest}}",
+						"body": {
+							"mode": "raw",
+							"raw": "\\xFF\\xD8\\xFF\\xE0 temple-stamp newman upload \\xFF\\xD9"
 						}
 					}
 				},
@@ -15059,11 +15199,46 @@
 								"type": "text/javascript",
 								"exec": [
 									"pm.test('200', () => pm.response.to.have.status(200));",
-									"pm.environment.set('ePhotoKey', pm.response.json().data.fileKey);"
+									"pm.environment.set('ePhotoKey', pm.response.json().data.fileKey);",
+									"pm.environment.set('eUploadUrl', pm.response.json().data.uploadUrl);",
+									"pm.environment.set('eUploadUrlRest', pm.response.json().data.uploadUrl.split('/api/uploads/')[1]);"
 								]
 							}
 						}
 					]
+				},
+				{
+					"name": "E01-d-up 바이트를 실제로 올린다 (챕터 11-A)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// STEP 4 로 서버가 바이트를 받는다. 키만 받고 올리지 않으면 사진 저장이 UPLOAD-4001 로 막힌다.",
+									"pm.test('201 — 바이트가 저장소에 들어갔다', () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{eToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "image/jpeg"
+							}
+						],
+						"url": "{{baseUrl}}/api/uploads/{{eUploadUrlRest}}",
+						"body": {
+							"mode": "raw",
+							"raw": "\\xFF\\xD8\\xFF\\xE0 temple-stamp newman upload \\xFF\\xD9"
+						}
+					}
 				},
 				{
 					"name": "E01-e [준비] 첫 다짐 제출 (사진 포함)",

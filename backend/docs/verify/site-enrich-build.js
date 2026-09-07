@@ -68,17 +68,27 @@ function gradeOf(raw) {
   return '비공식';
 }
 
-/* ── 공양 — 서술을 값 4종으로 접는다 ──
-   ★ "미확인" 은 NONE 이 아니다. "없다" 와 "모른다" 는 다른 사실이라 빈칸으로 둔다.
-     NONE 을 넣으면 확인해 보지도 않고 "공양 없음" 을 화면에 띄우게 된다. */
-function mealOf(raw) {
+/* ── 공양 — 값 4종(C1 보강 · 2026-09-08) ──
+     TEMPLE_MEAL  사찰음식 특화·체험. <b>이름을 아는 6곳만</b>
+     RESERVATION  공양은 있고 사전 예약·시간 확인이 필요하다 — <b>기본값</b>
+     NONE         공양 없음이 확인된 곳. 확인 전에는 쓰지 않는다
+     NEARBY       경내 공양 없고 인근 식당. 확인된 곳만
+
+   ★ 앞 회차는 조사 서술("사찰음식·템플스테이")을 보고 49곳을 TEMPLE_MEAL 로 접었다. 그것을 되돌린다 —
+     조사 문구에 '사찰음식' 이 있다는 것과 <b>그 절이 사찰음식으로 이름난 곳</b>이라는 것은 다른 말이다.
+     대부분의 절은 그냥 공양을 낸다(RESERVATION). 원문은 note 의 "공양원문=" 에 그대로 남는다.
+
+   ★ 빈칸도 NULL 도 쓰지 않는다. 대부분의 절에 공양이 있다는 것이 확인됐으므로 '모른다' 로 둘 이유가 없다.
+     모르는 것은 '얼마나 미리 연락해야 하는가' 이지 '있는가' 가 아니고, 그 모름은 RESERVATION 이 이미 말한다. */
+const TEMPLE_MEAL_SITES = ['진관사', '봉녕사', '수도사', '백양사', '금수암', '망경산사'];
+
+function mealOf(raw, siteName) {
   const t = (raw || '').trim();
-  if (!t || t.includes('미확인')) return '';
+  if (TEMPLE_MEAL_SITES.includes(siteName)) return 'TEMPLE_MEAL';
   if (/없음|불가/.test(t)) return 'NONE';
   if (/인근|주변\s*식당/.test(t)) return 'NEARBY';
-  if (/사찰음식|템플스테이/.test(t)) return 'TEMPLE_MEAL';
-  if (/공양간|대중공양/.test(t)) return 'PUBLIC_MEAL';
-  return '';
+  if (t === 'NONE' || t === 'NEARBY') return t;   // 이미 확인돼 정규화된 값은 지킨다
+  return 'RESERVATION';
 }
 
 function clean(v) {
@@ -188,7 +198,8 @@ for (const r of rows) {
     fix.excluded || '',
     clean(r.note),
     r.research_status ? `조사단계=${r.research_status}` : '',
-    clean(r.meal_available) ? `공양원문=${clean(r.meal_available)}` : '',
+    // 공양원문은 note 에 이미 들어 있다(값을 4종으로 접으면서 원문이 덮여서, 그때 옮겨 두었다).
+    // meal_available 을 다시 붙이면 '공양원문=RESERVATION' 이 되어 원문이 두 번 사라진다.
     clean(r.flower_badge) ? `꽃절=${clean(r.flower_badge)}` : '',
     clean(r.heritage) ? `국가유산=${clean(r.heritage)}` : '',
     clean(r.walk_path) ? `산책로=${clean(r.walk_path)}` : '',
@@ -205,7 +216,7 @@ for (const r of rows) {
     '',                                   // qrLocationHint — 같은 이유
     clean(r.parking_info),
     clean(r.access_info),
-    mealOf(r.meal_available),
+    mealOf(r.meal_available, r.site_name_ko),
     '',                                   // description — 조사 원본에 소개 문장 열이 없다
     '',                                   // descriptionEn — 같은 이유(site_name_en 은 이름이지 소개가 아니다)
     viewpoints[0] || '', viewpoints[1] || '', viewpoints[2] || '',
