@@ -10,6 +10,11 @@
     <!-- [RULE] 삭제 후 재삽입 금지. 후보를 빼려면 관리자 API 의 개별 DELETE 로 -->
   </insert>
 
+  <!-- uk_slot_site_site (site_id, track) 의 주인. 없으면 비어 있는 Optional 이다. -->
+  <select id="findOwnerCourseSiteId" resultType="long">
+    SELECT course_site_id FROM slot_site WHERE site_id = #{siteId} AND track = #{track} LIMIT 1
+  </select>
+
   <select id="exists" resultType="boolean">
     SELECT COUNT(*) > 0 FROM slot_site WHERE course_site_id = #{courseSiteId} AND site_id = #{siteId}
   </select>

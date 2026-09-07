@@ -20,7 +20,8 @@ public class EbookRow {
     private Long pilgrimageId;
     private Long courseId;         // 회향본·중간본이면 null
     private String courseName;
-    private String ebookType;      // PILGRIMAGE(코스본) / INTERIM(3코스) / HOEHYANG(회향본)
+    private String ebookType;      // PILGRIMAGE(코스본) / INTERIM(전자일기장) / HOEHYANG(회향본) / PERSONAL(개인 소장본)
+    private Integer milestone;     // 전자일기장의 3·6·9·12. 그 밖의 종류는 null
     private String status;         // REQUESTED / READY / FAILED
     private String failReason;     // FAILED 일 때만
     private Integer pageCount;     // READY 일 때만

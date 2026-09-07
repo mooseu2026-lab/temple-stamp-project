@@ -155,13 +155,30 @@ frontend/
 Site → Verse(항상) → Phrase(확장문구 시트) → Mission(도착 전 미리 보기) → Viewpoint → Badge → RiderInfo(타겟별 위치) → VerifyState(비로그인 null → 로그인 유도) → guideAvailable. 캐시 없음.
 
 ### S-06/S-07 현장 인증 3단계
+
+**정확도 등급은 프론트가 정한다(챕터 11 결정 F).** 서버는 좌표를 받지 않아 미터를 다시 잴 수 없다.
+`navigator.geolocation` 의 `coords.accuracy`(미터, 68% 신뢰반경)를 `location.js` 가 이렇게 접는다:
+
+| `coords.accuracy` | `accuracyGrade` | 화면 |
+|---|---|---|
+| ≤ 30 | `HIGH` | 그대로 진행 |
+| 30 초과 ~ 100 이하 | `MID` | 그대로 진행 |
+| 100 초과 (또는 값이 없음) | `LOW` | **서버를 부르지 않는다.** E-02 "신호를 더 받는 중" + 30초 재시도 |
+
+경계는 서버의 `AccuracyGrade` javadoc 과 한 쌍이다 — 한쪽만 고치면 같은 상황이 기기마다 다른 등급으로 올라간다.
+현장 실측 뒤 조정할 값이고, 조정할 때는 **두 곳을 함께** 고친다.
+`LOW` 를 그래도 보내면 서버가 `STAMP-4001` 로 막는다 — 화면이 먼저 막는 것은 헛걸음을 줄이기 위해서다.
+
 StepBar에 남은 시간(60분, `expiresAt` 기준, 만료 시 STAMP-4101 안내·새로 시작). ① GPS: Geolocation → 반경·정확도(HIGH/MID/LOW)를 단말이 계산 → LOW면 서버 호출 없이 "신호를 더 받는 중"(E-02) → `POST gps-check{siteId,inRadius,accuracyGrade}` → `qrLocationHint` 표시. ② QR: 기본 카메라 체크인 URL 또는 앱 내 스캔 → `POST qr` → 4221이면 "이 사찰의 QR이 아닙니다". ③ 미션: 서버가 준 원고(세션 고정) 표시 → 다짐 10~300자 + 사진(presign PUT) → 제출 → 도장 연출(StampSeal) + 확장문구 + `courseCompleted`면 인증서 번호·보상 카드. 실내 GPS 실패는 예외접수(EVIDENCE) 경로.
 
 ### S-08/S-11 기록
 사진: 사찰당 1장 UPSERT, memo 필수(E-09), 비공개 토글. 생각상자: sort date/course/site, 비공개, PATCH. flashback null → 카드 미표시.
 
 ### S-13/S-14 전자책·인증서
-전자책: [만들기] → 202 REQUESTED → 5초 폴링 → READY → [열기](presigned 새 창) · FAILED → [다시] · 인쇄주문(READY만, 취소는 REQUESTED만 — 서버 `cancelable`대로). 인증서: 목록 → 1장(PDF·QR) · REVOKED는 "무효" 배지 + 다운로드 없음.
+전자책: [만들기] → 202 REQUESTED → 5초 폴링 → READY → [열기](presigned 새 창) · FAILED → [다시] · 인쇄주문(READY만, 취소는 REQUESTED만 — 서버 `cancelable`대로).
+**전자일기장**은 같은 버튼에 `?type=INTERIM` 을 붙인 것이다(챕터 11). 3코스 미만이면 서버가 개인 소장본으로 내려 만들고,
+이미 그 마일스톤 책이 있으면 그 행을 돌려준다 — 프론트는 응답의 `ebookType`·`milestone` 을 보고 제목을 정한다.
+기록이 하나도 없을 때만 400 `EBOOK-4001` 이다(도장이 없어도 사진·생각상자가 있으면 만들어진다). 인증서: 목록 → 1장(PDF·QR) · REVOKED는 "무효" 배지 + 다운로드 없음.
 
 ### S-19 진위 확인
 로그인 없음. 번호 입력/QR 진입 → VALID(초록)·REVOKED(회색, 회수일)·없음(404 "확인할 수 없습니다"). 마스킹된 이름·종류·코스·발급일만.

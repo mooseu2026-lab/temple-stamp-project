@@ -1,0 +1,47 @@
+# 운영 프로파일. 로컬과 다른 것만 덮어쓴다.
+spring:
+  sql:
+    init:
+      # 운영 스키마는 배포 파이프라인이 관리한다. 기동이 DDL 을 돌리지 않는다.
+      mode: never
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 3000
+
+server:
+  address: 0.0.0.0
+
+app:
+  cookie:
+    # https 전용. 이 값을 빠뜨리면 에러 없이 Secure 없는 쿠키가 나간다 — 배포 체크리스트 항목.
+    secure: true
+
+# StorageProperties 의 prefix 는 app 이 아니라 storage 다.
+# app.storage.provider 아래에 두면 바인딩되는 곳이 없어 조용히 local 스텁 URL 이 나간다.
+storage:
+  # S3 구현은 아직 없다. provider 를 읽는 코드가 한 곳도 없어서 s3 라고 적어 두면 설정만 거짓이 된다
+  # (최종 점검 F 결함 ③). local 이 아닌 값으로는 아예 뜨지 않게 RequiredEnvCheck 가 막는다.
+  # S3 는 배포 후 별도 결정 — 붙일 때 ObjectStorageClient 의 넷(put·getBytes·exists·delete)만 바꾼다.
+  provider: local
+  bucket: ${STORAGE_BUCKET}
+  endpoint: ${STORAGE_ENDPOINT}
+
+# 배포 도메인. 로컬 기본값(localhost:5173, :3000)이 운영에 남지 않도록 여기서 덮어쓴다.
+# allow-credentials 가 true 라 "*" 는 쓸 수 없다 — 도메인을 명시해야 한다.
+cors:
+  allowed-origins: ${FRONTEND_URL}
+
+logging:
+  level:
+    root: info
+    com.templestamp: info
+
+# actuator 노출을 운영에서 한 번 더 고정한다.
+# base-path 가 / 라서 include 를 넓히면 /env(DB 비밀번호·JWT 시크릿)가 곧바로 루트에 열린다.
+# application.yml 한 곳만 믿지 않는다 — 그 줄을 건드린 변경이 운영까지 그대로 가지 않게.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

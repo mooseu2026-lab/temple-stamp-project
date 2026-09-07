@@ -9,6 +9,7 @@ import com.lowagie.text.Paragraph;
 import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfWriter;
 import com.templestamp.ebook.dto.EbookCertRow;
+import com.templestamp.ebook.dto.EbookPhotoRow;
 import com.templestamp.ebook.dto.EbookStampRow;
 import com.templestamp.ebook.dto.EbookThinkboxRow;
 import com.templestamp.global.config.EbookProperties;
@@ -59,7 +60,16 @@ public class PdfBuilder {
     public record PdfResult(byte[] bytes, int pageCount) {
     }
 
+    /** 종류를 적지 않은 옛 호출. 표지는 개인 소장본 표지다. */
     public PdfResult build(EbookMaterials m) {
+        return build(m, null, null);
+    }
+
+    /**
+     * 종류에 맞는 표지로 한 권. 전자일기장(INTERIM)은 표지에 몇 코스까지의 기록인지 적는다 —
+     * 3·6·9·12 가 모두 "나의 순례 기록" 이면 서가에서 어느 것이 어느 것인지 알 수 없다.
+     */
+    public PdfResult build(EbookMaterials m, String ebookType, Integer milestone) {
         Document doc = new Document(PageSize.A4, 50, 50, 50, 50);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PdfWriter writer = PdfWriter.getInstance(doc, out);
@@ -71,9 +81,10 @@ public class PdfBuilder {
         Font body = new Font(base, 11);
         Font small = new Font(base, 9, Font.NORMAL, new java.awt.Color(110, 110, 110));
 
-        cover(doc, m, title, body);
+        cover(doc, m, title, body, ebookType, milestone);
         courses(doc, m, head, body);
         stamps(doc, m, head, body, small);
+        photos(doc, m, head, small);
         thinkboxes(doc, m, head, body, small);
         meditations(doc, m, head, body);
         certificates(doc, m, head, body);
@@ -85,9 +96,15 @@ public class PdfBuilder {
 
     /* ---------------- 페이지 ---------------- */
 
-    private void cover(Document doc, EbookMaterials m, Font title, Font body) {
+    private void cover(Document doc, EbookMaterials m, Font title, Font body,
+                       String ebookType, Integer milestone) {
+        boolean diary = Ebook.INTERIM.equals(ebookType);
         doc.add(gap(120));
-        doc.add(center("나의 순례 기록", title));
+        doc.add(center(diary ? "전자일기장" : "나의 순례 기록", title));
+        if (diary && milestone != null) {
+            doc.add(gap(8));
+            doc.add(center("%d코스까지의 기록".formatted(milestone), body));
+        }
         doc.add(gap(24));
         doc.add(center(m.nickname(), body));
         LocalDate from = m.firstDate();
@@ -158,6 +175,25 @@ public class PdfBuilder {
             log.warn("전자책 사진 삽입 실패 — 빈 자리로 둔다. key={}", photoKey, e);
             doc.add(new Paragraph("(사진 없음)", small));
         }
+    }
+
+    /**
+     * 도장에 붙지 않은 사진. 전자일기장은 도장이 없어도 만들어지므로 이 페이지가 비어 있을 수도,
+     * 이 페이지만 있을 수도 있다 — 없으면 통째로 건너뛴다(빈 제목만 남은 페이지를 만들지 않는다).
+     */
+    private void photos(Document doc, EbookMaterials m, Font head, Font small) {
+        if (m.photos().isEmpty()) {
+            return;
+        }
+        doc.add(new Paragraph("사진", head));
+        doc.add(gap(10));
+        for (EbookPhotoRow ph : m.photos()) {
+            String where = ph.getSiteName() == null ? "" : ph.getSiteName() + " · ";
+            doc.add(new Paragraph(where + ph.getCreatedAt().toLocalDate().format(DATE), small));
+            addPhoto(doc, ph.getFileKey(), small);
+            doc.add(gap(12));
+        }
+        doc.newPage();
     }
 
     private void thinkboxes(Document doc, EbookMaterials m, Font head, Font body, Font small) {
@@ -277,6 +313,6 @@ public class PdfBuilder {
 
     /** 목록 조립에만 쓰는 도구 — 테스트가 페이지 구성을 확인할 때 함께 본다. */
     public List<String> sections() {
-        return List.of("표지", "걸어온 길", "도장", "생각상자", "명상", "인증서", "판권");
+        return List.of("표지", "걸어온 길", "도장", "사진", "생각상자", "명상", "인증서", "판권");
     }
 }

@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.reward.UserRewardMapper">
+
+    <sql id="columns">
+        user_reward_id, user_id, reward_policy_id, stamp_id, pilgrimage_id, status,
+        audit_score, audit_detail, granted_at, claimed_at, resolved_at, resolved_by
+    </sql>
+
+    <!-- RewardRow 는 rewardName·earnedAt 이라는 이름을 쓴다. 별칭으로 맞춰 준다. -->
+    <sql id="rowSelect">
+        SELECT ur.user_reward_id,
+               ur.user_id,
+               u.nickname,
+               ur.reward_policy_id,
+               rp.name       AS reward_name,
+               rp.reward_type,
+               ur.status,
+               ur.needs_review,
+               ur.stamp_id,
+               ur.pilgrimage_id,
+               c.name        AS course_name,
+               ur.granted_at AS earned_at,
+               ur.claimed_at
+        FROM user_reward ur
+                 JOIN users u ON u.user_id = ur.user_id
+                 JOIN reward_policy rp ON rp.reward_policy_id = ur.reward_policy_id
+                 LEFT JOIN pilgrimage p ON p.pilgrimage_id = ur.pilgrimage_id
+                 LEFT JOIN course c ON c.course_id = p.course_id
+    </sql>
+
+    <!--
+      같은 근거로 이미 적립돼 있으면 조용히 넘어간다. (정책, 도장) 과 (정책, 순례) 에
+      UNIQUE 가 걸려 있어 완주 처리가 재시도돼도 보상이 두 번 쌓이지 않는다.
+      영향 행 수가 0 이면 "이미 있었다" 는 뜻이라 호출부가 그것으로 신규 여부를 판단한다.
+    -->
+    <insert id="grant" parameterType="com.templestamp.reward.UserReward"
+            useGeneratedKeys="true" keyProperty="userRewardId">
+        INSERT IGNORE INTO user_reward (user_id, reward_policy_id, stamp_id, pilgrimage_id,
+                                        status, granted_at)
+        VALUES (#{userId}, #{rewardPolicyId}, #{stampId}, #{pilgrimageId}, 'GRANTED', NOW())
+    </insert>
+
+    <select id="findRowById" resultType="com.templestamp.reward.dto.RewardRow">
+        <include refid="rowSelect"/>
+        WHERE ur.user_reward_id = #{userRewardId}
+    </select>
+
+    <select id="findRow" resultType="com.templestamp.reward.dto.RewardRow">
+        <include refid="rowSelect"/>
+        WHERE ur.reward_policy_id = #{rewardPolicyId}
+        <choose>
+            <when test="stampId != null">
+                AND ur.stamp_id = #{stampId}
+            </when>
+            <otherwise>
+                AND ur.pilgrimage_id = #{pilgrimageId}
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="findRowsByUserId" resultType="com.templestamp.reward.dto.RewardRow">
+        <include refid="rowSelect"/>
+        WHERE ur.user_id = #{userId}
+        ORDER BY ur.granted_at DESC
+    </select>
+
+<!--
+      신청할 수 있는 상태일 때만 바뀐다. 중복 신청을 SQL 단계에서 막는다.
+      반려(REJECTED)된 것도 다시 신청할 수 있다 — 반려는 "이번 신청이 안 됐다" 는 뜻이지
+      보상 자체를 없앤 것이 아니다(챕터 7 §4-2).
+      지난 심사 흔적(resolved_at·resolved_by)은 새 신청과 함께 지운다. 남겨 두면 심사 화면에서
+      "이미 처리된 건" 으로 보인다.
+    -->
+    <update id="claim">
+        UPDATE user_reward
+        SET status       = #{status},
+            audit_score  = #{auditScore},
+            audit_detail = #{auditDetail},
+            claimed_at   = NOW(),
+            resolved_at  = NULL,
+            resolved_by  = NULL
+        WHERE user_reward_id = #{userRewardId}
+          AND status IN ('GRANTED', 'REJECTED')
+    </update>
+
+<!--
+      심사 결과 반영. 신청 접수(CLAIMED)와 검토 대기(UNDER_REVIEW) 둘 다에서 넘어온다.
+      needs_review 는 여기서 끈다 — 사람이 봤다는 뜻이다.
+    -->
+    <update id="resolve">
+        UPDATE user_reward
+        SET status       = #{status},
+            needs_review = 0,
+            resolved_at  = NOW(),
+            resolved_by  = #{resolvedBy},
+            tracking_no  = #{trackingNo}
+        WHERE user_reward_id = #{userRewardId}
+          AND status IN ('CLAIMED', 'UNDER_REVIEW')
+    </update>
+
+    <!--
+      심사 목록. needs_review 가 켜진 것은 완주가 취소됐는데 이미 움직인 보상이라 항상 맨 위다(§4-4).
+      그 다음은 오래 기다린 순서.
+    -->
+    <select id="findUnderReview" resultType="com.templestamp.reward.dto.AdminClaimRow">
+        SELECT ur.user_reward_id,
+               ur.user_id,
+               u.nickname,
+               rp.name        AS reward_name,
+               rp.reward_type,
+               ur.status,
+               ur.needs_review,
+               c.name         AS course_name,
+               ur.granted_at  AS earned_at,
+               ur.claimed_at,
+               ur.tracking_no,
+               rc.recipient_name,
+               rc.phone,
+               rc.address,
+               rc.memo
+        FROM user_reward ur
+                 JOIN users u ON u.user_id = ur.user_id
+                 JOIN reward_policy rp ON rp.reward_policy_id = ur.reward_policy_id
+                 LEFT JOIN pilgrimage p ON p.pilgrimage_id = ur.pilgrimage_id
+                 LEFT JOIN course c ON c.course_id = p.course_id
+                 LEFT JOIN reward_claim rc ON rc.user_reward_id = ur.user_reward_id
+        WHERE ur.status IN ('CLAIMED', 'UNDER_REVIEW')
+           OR ur.needs_review = 1
+        ORDER BY ur.needs_review DESC, ur.claimed_at
+    </select>
+
+    <update id="restoreRevoked">
+        UPDATE user_reward
+        SET status       = 'GRANTED',
+            needs_review = 0,
+            claimed_at   = NULL,
+            resolved_at  = NULL,
+            resolved_by  = NULL
+        WHERE reward_policy_id = #{rewardPolicyId}
+          AND status = 'REVOKED'
+        <choose>
+            <when test="stampId != null">
+                AND stamp_id = #{stampId}
+            </when>
+            <otherwise>
+                AND pilgrimage_id = #{pilgrimageId}
+            </otherwise>
+        </choose>
+    </update>
+
+    <!-- ============ 완주 취소 연쇄 (챕터 7 §2-4) ============ -->
+
+    <update id="revokeGrantedByPilgrimage">
+        UPDATE user_reward
+        SET status = 'REVOKED'
+        WHERE pilgrimage_id = #{pilgrimageId}
+          AND status = 'GRANTED'
+    </update>
+
+    <update id="flagNeedsReviewByPilgrimage">
+        UPDATE user_reward
+        SET needs_review = 1
+        WHERE pilgrimage_id = #{pilgrimageId}
+          AND status IN ('CLAIMED', 'UNDER_REVIEW', 'PAID')
+    </update>
+
+    <update id="revokeGrantedByUser">
+        UPDATE user_reward
+        SET status = 'REVOKED'
+        WHERE user_id = #{userId}
+          AND status = 'GRANTED'
+    </update>
+
+    <update id="flagNeedsReviewByUser">
+        UPDATE user_reward
+        SET needs_review = 1
+        WHERE user_id = #{userId}
+          AND status IN ('CLAIMED', 'UNDER_REVIEW', 'PAID')
+    </update>
+
+    <update id="revokeGrantedByTrigger">
+        UPDATE user_reward ur
+            JOIN reward_policy rp ON rp.reward_policy_id = ur.reward_policy_id
+        SET ur.status = 'REVOKED'
+        WHERE ur.user_id = #{userId}
+          AND rp.trigger_type = #{triggerType}
+          AND ur.status = 'GRANTED'
+    </update>
+
+    <update id="flagNeedsReviewByTrigger">
+        UPDATE user_reward ur
+            JOIN reward_policy rp ON rp.reward_policy_id = ur.reward_policy_id
+        SET ur.needs_review = 1
+        WHERE ur.user_id = #{userId}
+          AND rp.trigger_type = #{triggerType}
+          AND ur.status IN ('CLAIMED', 'UNDER_REVIEW', 'PAID')
+    </update>
+
+</mapper>

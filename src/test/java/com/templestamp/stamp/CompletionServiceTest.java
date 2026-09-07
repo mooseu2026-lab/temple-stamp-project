@@ -130,26 +130,35 @@ class CompletionServiceTest {
     }
 
     @Test
-    @DisplayName("아직 아무도 움직이지 않은 보상만 회수되고, 신청까지 간 것은 사람이 보도록 표시만 켠다")
-    void revoke_only_untouched_rewards() {
+    @DisplayName("코스 하나를 완주해도 보상은 0이다 — 코스 쿠폰 정책이 꺼졌다(챕터 11 결정 A)")
+    void single_course_grants_no_reward() {
         stampsCompleted(5);
         completionService.afterStampCompleted(userId, pilgrimageId, lastStampId());
-        // 이 완주로 적립된 보상 하나를 "이미 신청한" 상태로 만든다 — 실물이 움직였을 수 있는 자리다.
-        // 도장 단위 보상(stamp_id 로 매인 것)은 완주 취소의 대상이 아니다 — 그 도장들은 아직 살아 있다.
-        Long moved = jdbc.queryForObject(
-                "SELECT user_reward_id FROM user_reward WHERE pilgrimage_id = ? ORDER BY user_reward_id LIMIT 1",
-                Long.class, pilgrimageId);
-        jdbc.update("UPDATE user_reward SET status = 'CLAIMED', claimed_at = NOW() WHERE user_reward_id = ?", moved);
 
-        rejectLastStamp();
-        completionService.afterStampRevoked(pilgrimageId);
-
-        assertThat(jdbc.queryForObject("SELECT status FROM user_reward WHERE user_reward_id = ?", String.class, moved))
-                .as("이미 신청된 것은 상태를 바꾸지 않는다").isEqualTo("CLAIMED");
-        assertThat(jdbc.queryForObject("SELECT needs_review FROM user_reward WHERE user_reward_id = ?", Integer.class, moved))
-                .as("대신 사람이 보도록 표시").isEqualTo(1);
+        assertThat(pilgrimageStatus()).isEqualTo("COMPLETED");
+        assertThat(rewardCount()).as("3코스 전에는 아무 사은품도 없다").isZero();
     }
 
+    @Test
+    @DisplayName("3코스마다 전자일기장 — 3에서 한 권, 4에서는 늘지 않고, 6에서 한 권 더")
+    void diary_every_three_courses() {
+        stampsCompleted(5);
+        completeExtraCourses(3);          // 이 코스까지 합쳐 3코스
+        completionService.afterStampCompleted(userId, pilgrimageId, lastStampId());
+        assertThat(diaryRewards()).as("3코스 — 한 권").isEqualTo(1);
+        assertThat(milestones()).containsExactly(3);
+        assertThat(interimEbooks()).isEqualTo(1);
+
+        completeExtraCourses(4);          // 4코스
+        completionService.afterStampCompleted(userId, pilgrimageId, lastStampId());
+        assertThat(diaryRewards()).as("4코스 — 늘지 않는다").isEqualTo(1);
+
+        completeExtraCourses(6);          // 6코스
+        completionService.afterStampCompleted(userId, pilgrimageId, lastStampId());
+        assertThat(diaryRewards()).as("6코스 — 한 권 더").isEqualTo(2);
+        assertThat(milestones()).containsExactly(3, 6);
+        assertThat(interimEbooks()).as("전자책도 마일스톤마다").isEqualTo(2);
+    }
     @Test
     @DisplayName("재승인하면 완주 행은 되살아나고 인증서는 새 번호로 나온다 — 옛 번호는 무효로 남는다")
     void re_approval_revives_row_and_issues_new_serial() {
@@ -314,6 +323,39 @@ class CompletionServiceTest {
                 SELECT serial_no FROM certificate
                  WHERE user_id = ? AND cert_type = 'PILGRIMAGE' AND status = 'VALID'
                 """, String.class, userId);
+    }
+
+    /** 이 검사의 코스 말고 <b>다른 코스</b>를 n-1 개 더 완주 상태로 만든다(합계 n 코스). */
+    private void completeExtraCourses(int total) {
+        jdbc.update("UPDATE course SET status = 'ACTIVE' WHERE course_id <> ?", COURSE_ID);
+        jdbc.update("""
+                INSERT IGNORE INTO pilgrimage (user_id, course_id, status, completed_at)
+                SELECT ?, course_id, 'COMPLETED', NOW() FROM course
+                 WHERE course_id <> ? ORDER BY course_id LIMIT ?
+                """, userId, COURSE_ID, total - 1);
+    }
+
+    private int diaryRewards() {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*) FROM user_reward ur JOIN reward_policy rp
+                       ON rp.reward_policy_id = ur.reward_policy_id
+                 WHERE ur.user_id = ? AND rp.trigger_type = 'EVERY_THREE_COURSES'
+                """, Integer.class, userId);
+    }
+
+    private List<Integer> milestones() {
+        return jdbc.queryForList("""
+                SELECT ur.milestone FROM user_reward ur JOIN reward_policy rp
+                       ON rp.reward_policy_id = ur.reward_policy_id
+                 WHERE ur.user_id = ? AND rp.trigger_type = 'EVERY_THREE_COURSES'
+                 ORDER BY ur.milestone
+                """, Integer.class, userId);
+    }
+
+    private int interimEbooks() {
+        return jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ebook WHERE user_id = ? AND ebook_type = 'INTERIM'",
+                Integer.class, userId);
     }
 
     private int rewardCount() {

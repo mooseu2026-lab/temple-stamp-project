@@ -345,7 +345,7 @@
    }
   },
   {
-   "name": "W17c 아직 아무도 움직이지 않은 보상만 회수된다",
+   "name": "W17c 완주 취소 — 전자일기장은 회수되지 않는다 (챕터 11 결정 C)",
    "event": [
     {
      "listen": "test",
@@ -355,8 +355,12 @@
        "pm.test('200', () => pm.response.to.have.status(200));",
        "const it = pm.response.json().data.items;",
        "console.log('[W17c] ' + it.map(r => r.rewardType + ':' + r.status).join(', '));",
-       "pm.test('코스 완주 보상이 회수됐다', () => pm.expect(it.some(r => r.status === 'REVOKED')).to.be.true);",
-       "pm.test('회수된 것은 claimable 이 아니다', () => pm.expect(it.filter(r => r.status === 'REVOKED').every(r => r.claimable === false)).to.be.true);",
+       "// 코스마다 주던 쿠폰 정책이 꺼져서(결정 A) 이 시점에 회수될 코스 보상 자체가 없다.",
+       "// 대신 봐야 하는 것은 <b>전자일기장이 살아남는가</b> 다 — 이미 읽은 책을 뺏을 수는 없다(결정 C).",
+       "pm.test('전자일기장은 회수되지 않는다', () => pm.expect(",
+       "  it.filter(r => r.rewardType === 'DIGITAL').every(r => r.status !== 'REVOKED')).to.be.true);",
+       "pm.test('회수된 것이 있다면 claimable 이 아니다', () => pm.expect(",
+       "  it.filter(r => r.status === 'REVOKED').every(r => r.claimable === false)).to.be.true);",
        "pm.environment.set('wRewardCount', it.length);",
        "const revoked = it.find(r => r.status === 'REVOKED');",
        "pm.environment.set('wRevokedReward', revoked ? revoked.userRewardId : 0);"
@@ -514,11 +518,13 @@
        "pm.test('200', () => pm.response.to.have.status(200));",
        "const it = pm.response.json().data.items;",
        "console.log('[W27] ' + it.map(r => r.userRewardId + ':' + r.status).join(', '));",
-       "const target = Number(pm.environment.get(\"wRevokedReward\"));",
-       "const same = it.filter(r => r.userRewardId === target);",
-       "// 재적립이면 새 id 로 한 줄이 더 생긴다. 복귀면 그 id 그대로 한 줄이다.",
-       "pm.test('회수됐던 보상이 같은 id 로 한 줄만 있다', () => pm.expect(same).to.have.lengthOf(1));",
-       "pm.test('그 보상이 GRANTED 로 돌아왔다', () => pm.expect(same[0].status).to.eql('GRANTED'));",
+       "const target = Number(pm.environment.get('wRevokedReward'));",
+       "if (target > 0) {",
+       "  const same = it.filter(r => r.userRewardId === target);",
+       "  // 재적립이면 새 id 로 한 줄이 더 생긴다. 복귀면 그 id 그대로 한 줄이다.",
+       "  pm.test('회수됐던 보상이 같은 id 로 한 줄만 있다', () => pm.expect(same).to.have.lengthOf(1));",
+       "  pm.test('그 보상이 GRANTED 로 돌아왔다', () => pm.expect(same[0].status).to.eql('GRANTED'));",
+       "}",
        "// 재성립으로 회향 보상이 새로 붙는 것은 정상이다 — 그래서 전체 행 수는 늘 수 있다.",
        "// 여기서 안 되는 것은 '회수된 채 남는 것' 이다.",
        "pm.test('회수 상태로 남은 보상이 없다', () => pm.expect(it.filter(r => r.status === 'REVOKED')).to.have.lengthOf(0));"

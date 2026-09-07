@@ -11,6 +11,7 @@ public record EbookResponse(
         Long ebookId,
         String courseName,          // 회향본이면 null
         String ebookType,
+        Integer milestone,          // 전자일기장의 3·6·9·12. 표지 제목이 여기서 나온다
         String status,
         boolean downloadable,       // pdfKey 또는 epubKey 존재 여부 — 계산값
         Integer pageCount,          // READY 일 때만
@@ -28,7 +29,7 @@ public record EbookResponse(
     public static EbookResponse of(EbookRow row, String downloadUrl) {
         boolean downloadable = row.getPdfKey() != null || row.getEpubKey() != null;
         return new EbookResponse(row.getEbookId(), row.getCourseName(), row.getEbookType(),
-                row.getStatus(), downloadable, row.getPageCount(), row.getByteSize(),
+                row.getMilestone(), row.getStatus(), downloadable, row.getPageCount(), row.getByteSize(),
                 row.getFailReason(), downloadUrl, row.getCreatedAt());
     }
 }

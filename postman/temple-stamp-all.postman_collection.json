@@ -10,8 +10,10 @@
 				"type": "text/javascript",
 				"exec": [
 					"const p = pm.request.url.getPath();",
-					"// 204 는 본문이 없다(탈퇴). 봉투 규약은 본문이 있는 응답에만 적용된다.",
-					"const hasBody = pm.response.code !== 204 && pm.response.text() && pm.response.text().length > 0;",
+					"const isJson = (pm.response.headers.get('Content-Type') || '').includes('application/json');",
+					"// 204 는 본문이 없다(탈퇴). 봉투 규약은 <b>JSON 본문</b>이 있는 응답에만 적용된다 —",
+					"// CORS 거부처럼 필터 앞단이 내는 평문에는 봉투가 없고, 없는 것이 맞다.",
+					"const hasBody = pm.response.code !== 204 && isJson && pm.response.text() && pm.response.text().length > 0;",
 					"if (!p.endsWith('/health') && !p.endsWith('/env')) {",
 					"  pm.test('X-Request-Id 32자', () => pm.expect(pm.response.headers.get('X-Request-Id')).to.have.lengthOf(32));",
 					"  if (hasBody) {",
@@ -2540,7 +2542,7 @@
 					}
 				},
 				{
-					"name": "T10 다짐 제출 → 200 COMPLETED, 진행률 1, 보상 1건 이상",
+					"name": "T10 다짐 제출 → 200 COMPLETED, 진행률 1, 보상 0건 (챕터 11 — 도장 보상은 껐다)",
 					"event": [
 						{
 							"listen": "test",
@@ -2551,7 +2553,10 @@
 									"const d = pm.response.json().data;",
 									"pm.test('COMPLETED', () => pm.expect(d.status).to.eql('COMPLETED'));",
 									"pm.test('진행률 1', () => pm.expect(d.progress.completedCount).to.eql(1));",
-									"pm.test('보상 1건 이상', () => pm.expect(d.rewards.length).to.be.above(0));",
+									"// 챕터 11 결정 A — 도장마다·코스마다 주던 보상은 is_active=0 이다.",
+									"// 필드는 남는다(프론트 계약 불변). 목록만 빈다.",
+									"pm.test('rewards 필드는 그대로 있다', () => pm.expect(d.rewards).to.be.an('array'));",
+									"pm.test('보상 0건 — 3코스 전에는 사은품이 없다', () => pm.expect(d.rewards).to.be.empty);",
 									"pm.test('코스 완주는 아직', () => pm.expect(d.courseCompleted).to.be.false);"
 								]
 							}
@@ -4678,7 +4683,7 @@
 					}
 				},
 				{
-					"name": "R08 내 보상 (T10 뒤라 1건 이상)",
+					"name": "R08 내 보상 — 도장 하나로는 적립되지 않는다 (챕터 11)",
 					"event": [
 						{
 							"listen": "test",
@@ -4688,14 +4693,18 @@
 									"pm.test('200', () => pm.response.to.have.status(200));",
 									"const it = pm.response.json().data.items;",
 									"console.log('[R08] 보상 ' + it.length + '건 ' + it.map(r => r.rewardType + ':' + r.status + ':' + r.claimable).join(', '));",
-									"pm.test('1건 이상', () => pm.expect(it.length).to.be.above(0));",
+									"pm.test('배열을 items 로 감싼다', () => pm.expect(it).to.be.an('array'));",
+									"// 챕터 11 결정 A — 살아 있는 정책은 전자일기장(3코스마다)과 특별앨범(12코스)뿐이다.",
+									"pm.test('도장 하나로는 0건', () => pm.expect(it).to.be.empty);",
 									"// claimable 은 서버가 계산한다 — PHYSICAL 이고 GRANTED/REJECTED 이고 내 것일 때만 true.",
-									"// 이 시드에서 도장 완료로 받는 것은 STAMP 형이라 claimable 이 없다. 그 사실 자체를 여기서 확인한다.",
-									"it.forEach(r => pm.test('claimable 은 PHYSICAL 에만 (' + r.rewardType + ')', () =>",
-									"  pm.expect(r.claimable).to.eql(r.rewardType === 'PHYSICAL' && ['GRANTED', 'REJECTED'].includes(r.status))));",
+									"// 꺼진 정책의 과거 행(legacy)은 실물이어도 false 다.",
+									"it.forEach(r => pm.test('claimable 은 살아 있는 PHYSICAL 에만 (' + r.rewardType + ')', () =>",
+									"  pm.expect(r.claimable).to.eql(r.rewardType === 'PHYSICAL' && !r.legacy && ['GRANTED', 'REJECTED'].includes(r.status))));",
+									"// 뒤 요청이 쓸 대상. 보상이 없으면 <b>없는 번호</b>를 넘겨 404 경로를 확인한다 —",
+									"// 이 폴더의 요점은 \"서버가 응답의 claimable 을 믿지 않고 다시 검사한다\" 이고, 그 문은 404 에서도 닫혀 있어야 한다.",
 									"const target = it.find(r => r.claimable) || it[0];",
-									"pm.environment.set('userRewardId', target.userRewardId);",
-									"pm.environment.set('userRewardType', target.rewardType);"
+									"pm.environment.set('userRewardId', target ? target.userRewardId : 999999999);",
+									"pm.environment.set('userRewardType', target ? target.rewardType : 'NONE');"
 								]
 							}
 						}
@@ -4725,22 +4734,20 @@
 					}
 				},
 				{
-					"name": "R09 수령 신청 — 실물이 아니면 400 (챕터 7 §4-3)",
+					"name": "R09 수령 신청 — 서버가 응답을 믿지 않고 다시 검사한다 (챕터 7 §4-3)",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"const physical = pm.environment.get('userRewardType') === 'PHYSICAL';",
-									"console.log('[R09 claim] ' + pm.response.code + ' ' + pm.response.text().slice(0, 200));",
-									"if (physical) {",
-									"  pm.test('실물이면 200 접수', () => pm.response.to.have.status(200));",
-									"  pm.test('접수되면 CLAIMED · claimable false', () => {",
-									"    const d = pm.response.json().data;",
-									"    pm.expect(d.status).to.eql('CLAIMED');",
-									"    pm.expect(d.claimable).to.eql(false);",
-									"  });",
+									"const kind = pm.environment.get('userRewardType');",
+									"console.log('[claim] ' + kind + ' → ' + pm.response.code + ' ' + pm.response.text().slice(0, 200));",
+									"if (kind === 'PHYSICAL') {",
+									"  pm.test('실물이면 200 접수', () => { pm.response.to.have.status(200); const d = pm.response.json().data; pm.expect(d.status).to.eql('CLAIMED'); pm.expect(d.claimable).to.eql(false); });",
+									"} else if (kind === 'NONE') {",
+									"  pm.test('없는 보상은 404', () => pm.response.to.have.status(404));",
+									"  pm.test('REWARD-4040', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4040'));",
 									"} else {",
 									"  pm.test('실물이 아니면 400', () => pm.response.to.have.status(400));",
 									"  pm.test('REWARD-4001 수령 신청 대상 아님', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4001'));",
@@ -5621,17 +5628,19 @@
 								"type": "text/javascript",
 								"exec": [
 									"// 5-1 은 고쳤다. 첫 신청(R09)이 이미 막히므로 두 번째도 같은 코드로 막히는 것이 맞다.",
-									"// 실물 보상이 있으면 그때는 이미 접수된 상태라 409 REWARD-4092 다.",
-									"// 실물 보상을 실제로 접수했다가 다시 누르는 409 경로는 W11·W12 가 본다(이 폴더에는 실물 보상이 없다).",
-									"const physical = pm.environment.get('userRewardType') === 'PHYSICAL';",
-									"if (physical) {",
-									"  pm.test('재신청은 409', () => pm.response.to.have.status(409));",
-									"  pm.test('REWARD-4092 이미 신청됨', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4092'));",
+									"// 실물이었다면 그때는 이미 접수된 상태라 409 REWARD-4092 다.",
+									"const kind = pm.environment.get('userRewardType');",
+									"console.log('[claim] ' + kind + ' → ' + pm.response.code + ' ' + pm.response.text().slice(0, 200));",
+									"if (kind === 'PHYSICAL') {",
+									"  pm.test('재신청은 409 REWARD-4092', () => { pm.response.to.have.status(409); pm.expect(pm.response.json().error.code).to.eql('REWARD-4092'); });",
+									"} else if (kind === 'NONE') {",
+									"  pm.test('없는 보상은 404', () => pm.response.to.have.status(404));",
+									"  pm.test('REWARD-4040', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4040'));",
 									"} else {",
-									"  pm.test('실물이 아니면 몇 번을 눌러도 400', () => pm.response.to.have.status(400));",
-									"  pm.test('REWARD-4001', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4001'));",
+									"  pm.test('실물이 아니면 400', () => pm.response.to.have.status(400));",
+									"  pm.test('REWARD-4001 수령 신청 대상 아님', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4001'));",
 									"}",
-									"console.log('[R28] ' + pm.response.code + ' ' + (pm.response.json().error || {}).code);"
+									"pm.test('5xx 아님', () => pm.expect(pm.response.code).to.be.below(500));"
 								]
 							}
 						}
@@ -11959,7 +11968,7 @@
 					}
 				},
 				{
-					"name": "W08 내 보상 — claimable 은 실물에만",
+					"name": "W08 내 보상 — claimable 은 살아 있는 실물에만 (챕터 11)",
 					"event": [
 						{
 							"listen": "test",
@@ -11968,12 +11977,15 @@
 								"exec": [
 									"pm.test('200', () => pm.response.to.have.status(200));",
 									"const it = pm.response.json().data.items;",
-									"console.log('[W08] ' + it.map(r => r.rewardType + ':' + r.status + ':' + r.claimable).join(', '));",
-									"pm.test('1건 이상', () => pm.expect(it.length).to.be.above(0));",
-									"it.forEach(r => pm.test('claimable = 실물 AND 신청 가능 상태 (' + r.rewardType + ')', () =>",
-									"  pm.expect(r.claimable).to.eql(r.rewardType === 'PHYSICAL' && ['GRANTED', 'REJECTED'].includes(r.status))));",
+									"console.log('[W08] ' + it.map(r => r.rewardType + ':' + r.status + ':' + r.claimable + ':legacy=' + r.legacy).join(', '));",
+									"pm.test('배열을 items 로 감싼다', () => pm.expect(it).to.be.an('array'));",
+									"// 코스 하나를 완주해도 사은품은 없다(결정 A). 전자일기장은 3코스마다, 특별앨범은 12코스다.",
+									"pm.test('코스 하나로는 0건', () => pm.expect(it).to.be.empty);",
+									"it.forEach(r => pm.test('claimable = 살아 있는 실물 AND 신청 가능 상태 (' + r.rewardType + ')', () =>",
+									"  pm.expect(r.claimable).to.eql(r.rewardType === 'PHYSICAL' && !r.legacy && ['GRANTED', 'REJECTED'].includes(r.status))));",
 									"const digital = it.find(r => r.rewardType !== 'PHYSICAL');",
-									"pm.environment.set('wDigitalReward', digital ? digital.userRewardId : 0);"
+									"pm.environment.set('wDigitalReward', digital ? digital.userRewardId : 999999999);",
+									"pm.environment.set('wDigitalKind', digital ? digital.rewardType : 'NONE');"
 								]
 							}
 						}
@@ -12035,15 +12047,22 @@
 					}
 				},
 				{
-					"name": "W10 실물이 아닌 보상에 수령 신청 → 400",
+					"name": "W10 실물이 아닌(또는 없는) 보상에 수령 신청 → 4xx",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"pm.test('400', () => pm.response.to.have.status(400));",
-									"pm.test('REWARD-4001', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4001'));"
+									"const kind = pm.environment.get('wDigitalKind');",
+									"if (kind === 'NONE') {",
+									"  // 코스 하나만 완주한 이 계정에는 아직 보상이 없다. 그래도 문은 닫혀 있어야 한다.",
+									"  pm.test('없는 보상은 404', () => pm.response.to.have.status(404));",
+									"  pm.test('REWARD-4040', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4040'));",
+									"} else {",
+									"  pm.test('400', () => pm.response.to.have.status(400));",
+									"  pm.test('REWARD-4001', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4001'));",
+									"}"
 								]
 							}
 						}
@@ -17758,6 +17777,737 @@
 									"// 개수 단언 자체는 endpoint-scan.js·open-endpoint-probe.js 가 종료코드로 낸다.",
 									"// 여기서는 챕터 10 이 API 를 하나도 더하지 않았다는 것을 사람이 읽을 자리로만 둔다.",
 									"pm.test('챕터 10 은 엔드포인트를 신설하지 않았다', () => pm.expect(true).to.be.true);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Y 사은품·이동시간·CORS (챕터 11)",
+			"item": [
+				{
+					"name": "Y00a 관리자 로그인 (QR 발급에 쓴다)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/auth/login",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"email\":\"{{adminEmail}}\",\"password\":\"{{adminPassword}}\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('yAdminToken', pm.response.json().data.accessToken);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y00b 코스 1 상세 — 자리 id·대표 사찰 id",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/courses/1"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"const s = pm.response.json().data.sites;",
+									"for (let i = 0; i < 5; i++) {",
+									"  pm.environment.set('ycs' + (i + 1), s[i].courseSiteId);",
+									"  pm.environment.set('yst' + (i + 1), s[i].siteId);",
+									"}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y00c 점검 사용자 가입 (있으면 409 — 무시)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/auth/signup",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"email\":\"y-ch11@test.com\",\"password\":\"Test1234!\",\"nickname\":\"사은품검증\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('201 또는 409', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y00d 로그인",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/auth/login",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"email\":\"y-ch11@test.com\",\"password\":\"Test1234!\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('yToken', pm.response.json().data.accessToken);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y00e 위치 동의 (GPS 인증 전제)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/users/me/agreements",
+						"body": {
+							"mode": "raw",
+							"raw": "[{\"agreementType\":\"LOCATION_SERVICE\",\"version\":1}]"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 또는 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y00f 코스 1 시작",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/pilgrimages",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"courseId\":1}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 또는 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y05-a 자리 1 QR 발급",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yAdminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/admin/sites/{{yst1}}/qr",
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('yQr1', pm.response.json().data.qrToken);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y05-b 자리 1 gps-check",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/stamps/{{ycs1}}/gps-check",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"siteId\":{{yst1}},\"withinRadius\":true,\"accuracyGrade\":\"HIGH\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('yStamp1', pm.response.json().data.stampId);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y05-c 자리 1 QR",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/stamps/{{yStamp1}}/qr",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"qrToken\":\"{{yQr1}}\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y05 도장 1개 완료 → 보상 적립 0 (도장·쿠폰 정책은 껐다)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/stamps/{{yStamp1}}/mission",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"sentence\":\"오늘 받은 것들의 이름을 하나씩 불러본다.\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"const d = pm.response.json().data;",
+									"pm.test('COMPLETED', () => pm.expect(d.status).to.eql('COMPLETED'));",
+									"// 챕터 11 결정 A — 3코스 전에는 사은품이 없다. 필드는 남고 목록만 빈다.",
+									"pm.test('보상 0건', () => pm.expect(d.rewards).to.be.an('array').that.is.empty);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y03-a 자리 2 QR 발급",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yAdminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/admin/sites/{{yst2}}/qr",
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('yQr2', pm.response.json().data.qrToken);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y03-b 자리 2 gps-check",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/stamps/{{ycs2}}/gps-check",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"siteId\":{{yst2}},\"withinRadius\":true,\"accuracyGrade\":\"HIGH\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('yStamp2', pm.response.json().data.stampId);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y03-c 자리 2 QR",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/stamps/{{yStamp2}}/qr",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"qrToken\":\"{{yQr2}}\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y03 직전 도장 몇 분 뒤 다음 자리 → PENDING (사이 거리 없는 쌍은 기본 15분)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/stamps/{{yStamp2}}/mission",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"sentence\":\"오늘 받은 것들의 이름을 하나씩 불러본다.\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"const d = pm.response.json().data;",
+									"// 기본값이 0이면 검사가 꺼져 여기서 COMPLETED 가 나온다 — 그것이 이 확인의 요점이다.",
+									"pm.test('PENDING — 이동시간 검사가 켜져 있다', () => pm.expect(d.status).to.eql('PENDING'));",
+									"pm.test('확장문구는 아직 없다 (문구는 승인 시점에 박힌다)',",
+									"  () => pm.expect(d.expansionPhrase == null || d.expansionPhrase === '').to.be.true);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y05-d 보상 목록 — 비어 있고, 응답 규약은 그대로다",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/rewards"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"const items = pm.response.json().data.items;",
+									"pm.test('배열을 items 로 감싼다', () => pm.expect(items).to.be.an('array'));",
+									"pm.test('적립된 보상이 없다', () => pm.expect(items).to.be.empty);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y10-a 기록이 하나도 없는 새 사용자 가입",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/auth/signup",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"email\":\"y-ch11-empty@test.com\",\"password\":\"Test1234!\",\"nickname\":\"빈기록\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('201 또는 409', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y10-b 로그인",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/auth/login",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"email\":\"y-ch11-empty@test.com\",\"password\":\"Test1234!\"}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('yEmptyToken', pm.response.json().data.accessToken);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y10 기록 0 → 400 EBOOK-4001",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yEmptyToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/ebooks"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('400', () => pm.response.to.have.status(400));",
+									"pm.test('EBOOK-4001', () => pm.expect(pm.response.json().error.code).to.eql('EBOOK-4001'));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y10-c 생각상자 한 줄 — 도장이 없어도 재료가 된다",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yEmptyToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/thinkbox",
+						"body": {
+							"mode": "raw",
+							"raw": "{\"content\":\"절 마당에 앉아 바람 소리를 오래 들었다.\",\"isPrivate\":true}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 또는 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y10-d 도장 0인데도 만들어진다 — 옛 기준(도장 수)은 이 사람을 막았다",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yEmptyToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/ebooks"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 또는 202', () => pm.expect(pm.response.code).to.be.oneOf([200, 202]));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y10-e type=INTERIM 인데 3코스 미만 → 거절이 아니라 개인 소장본",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{yEmptyToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/ebooks?type=INTERIM"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 또는 202', () => pm.expect(pm.response.code).to.be.oneOf([200, 202]));",
+									"const d = pm.response.json().data;",
+									"pm.test('PERSONAL 로 내려서 만든다', () => pm.expect(d.ebookType).to.eql('PERSONAL'));",
+									"pm.test('마일스톤은 없다', () => pm.expect(d.milestone == null).to.be.true);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y12 preflight — x-request-id 허용·노출·Max-Age 3600",
+					"request": {
+						"method": "OPTIONS",
+						"header": [
+							{
+								"key": "Origin",
+								"value": "{{frontendOrigin}}"
+							},
+							{
+								"key": "Access-Control-Request-Method",
+								"value": "GET"
+							},
+							{
+								"key": "Access-Control-Request-Headers",
+								"value": "x-request-id"
+							}
+						],
+						"url": "{{baseUrl}}/api/courses"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200', () => pm.response.to.have.status(200));",
+									"const h = (n) => (pm.response.headers.get(n) || '').toLowerCase();",
+									"pm.test('Allow-Headers 에 x-request-id — 없으면 브라우저가 본 요청을 아예 보내지 않는다',",
+									"  () => pm.expect(h('Access-Control-Allow-Headers')).to.include('x-request-id'));",
+									"pm.test('Expose-Headers 에 X-Request-Id — 없으면 응답은 오는데 읽지 못한다',",
+									"  () => pm.expect(h('Access-Control-Expose-Headers')).to.include('x-request-id'));",
+									"pm.test('Max-Age 3600', () => pm.expect(pm.response.headers.get('Access-Control-Max-Age')).to.eql('3600'));",
+									"pm.test('자격증명을 허용하므로 * 가 아니다',",
+									"  () => pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.not.eql('*'));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Y12-b 허용 목록에 없는 오리진의 preflight 는 통과하지 못한다",
+					"request": {
+						"method": "OPTIONS",
+						"header": [
+							{
+								"key": "Origin",
+								"value": "https://not-our-site.example.com"
+							},
+							{
+								"key": "Access-Control-Request-Method",
+								"value": "GET"
+							}
+						],
+						"url": "{{baseUrl}}/api/courses"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 이 아니다', () => pm.expect(pm.response.code).to.not.eql(200));",
+									"pm.test('Allow-Origin 이 붙지 않는다',",
+									"  () => pm.expect(pm.response.headers.get('Access-Control-Allow-Origin') == null).to.be.true);"
 								]
 							}
 						}

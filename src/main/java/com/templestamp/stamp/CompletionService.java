@@ -148,9 +148,8 @@ public class CompletionService {
                 userId, pilgrimageId, certificate.getSerialNo());
 
         int completedCourses = pilgrimageMapper.countCompletedCourses(userId);
-        if (completedCourses == INTERIM_COURSE_COUNT) {
-            ebookService.enqueue(userId, null, Ebook.INTERIM);   // 중간본은 전자책이다 — 인증서 종류가 아니다
-        }
+        // 전자일기장(INTERIM)은 여기서 넣지 않는다. 마일스톤 없이 한 번 넣으면 (사용자, INTERIM, 0)
+        // 행이 먼저 자리를 잡아 3·6·9·12 가 영영 만들어지지 않는다 — completionRewards 한 곳에서만 넣는다.
         if (hoehyangHolds(completedCourses)) {
             certificateService.issueHoehyang(userId);
             ebookService.enqueue(userId, null, Ebook.HOEHYANG);
@@ -168,9 +167,14 @@ public class CompletionService {
                 rewardService.grantOrRestore(userId, RewardPolicy.ON_COURSE_COMPLETED, null, pilgrimageId));
 
         int completedCourses = pilgrimageMapper.countCompletedCourses(userId);
-        if (completedCourses == INTERIM_COURSE_COUNT) {
+        // 3코스<b>마다</b> 전자일기장 한 권 — 3·6·9·12. 등호(== 3)로 두면 이미 4코스를 완주한 사람에게
+        // 3 마일스톤 행이 없을 때 다시는 못 받는다(리뷰 2-3). >= 와 마일스톤 유니크가 함께 있어야
+        // 다음 완주가 빠진 것을 스스로 채운다.
+        if (completedCourses >= INTERIM_COURSE_COUNT && completedCourses % INTERIM_COURSE_COUNT == 0) {
             rewards.addAll(rewardService.grantOrRestore(
-                    userId, RewardPolicy.ON_THREE_COURSES_COMPLETED, null, pilgrimageId));
+                    userId, RewardPolicy.ON_EVERY_THREE_COURSES, null, null, completedCourses));
+            ebookService.enqueue(userId, null, Ebook.INTERIM, completedCourses);
+            log.info("전자일기장 마일스톤. userId={}, milestone={}", userId, completedCourses);
         }
         if (hoehyangHolds(completedCourses)) {
             rewards.addAll(rewardService.grantOrRestore(

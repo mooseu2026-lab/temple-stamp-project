@@ -47,6 +47,9 @@ public class RequiredEnvCheck implements EnvironmentPostProcessor {
         REQUIRED.put("JWT_SECRET", ".env.local");
         REQUIRED.put("QR_SECRET", ".env.local");
 
+        // 없으면 cors.allowed-origins 가 빈 문자열이 되어 <b>모든 오리진이 조용히 막힌다</b>.
+        // 서버는 멀쩡히 뜨고 로그도 깨끗한데 프론트만 전부 CORS 오류를 받는다(리뷰 3-5).
+        PROD_REQUIRED.put("FRONTEND_URL", "운영 환경변수");
         PROD_REQUIRED.put("STORAGE_BUCKET", "운영 환경변수");
         PROD_REQUIRED.put("STORAGE_ENDPOINT", "운영 환경변수");
     }

@@ -33,6 +33,8 @@ public class UserReward {
     private Long rewardPolicyId;
     private Long stampId;
     private Long pilgrimageId;
+    /** 3·6·9·12 — 전자일기장처럼 같은 정책으로 여러 번 받는 보상만 채운다. */
+    private Integer milestone;
     private String status;
     private BigDecimal auditScore;
     private String auditDetail;

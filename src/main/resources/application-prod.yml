@@ -27,6 +27,12 @@ storage:
   bucket: ${STORAGE_BUCKET}
   endpoint: ${STORAGE_ENDPOINT}
 
+# 이동시간 검사. 기본값 0은 검사가 통째로 꺼진다는 뜻이라 운영에서 금지다(챕터 11 결정 D).
+# application.yml 을 상속하면 되지만, 거기 값을 0으로 되돌리는 변경이 운영까지 그대로 가지 않게
+# 여기에 한 번 더 박아 둔다 — actuator 노출을 두 곳에 적어 둔 것과 같은 이유다.
+stamp:
+  default-travel-minutes: 15
+
 # 배포 도메인. 로컬 기본값(localhost:5173, :3000)이 운영에 남지 않도록 여기서 덮어쓴다.
 # allow-credentials 가 true 라 "*" 는 쓸 수 없다 — 도메인을 명시해야 한다.
 cors:

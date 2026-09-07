@@ -1,6 +1,7 @@
 package com.templestamp.ebook;
 
 import com.templestamp.ebook.dto.EbookCertRow;
+import com.templestamp.ebook.dto.EbookPhotoRow;
 import com.templestamp.ebook.dto.EbookStampRow;
 import com.templestamp.ebook.dto.EbookThinkboxRow;
 
@@ -19,6 +20,7 @@ import java.util.List;
  *
  * @param nickname   표지에 찍히는 이름
  * @param stamps     완료된 도장(사찰명·발행일·그날의 확장문구·사진·문장)
+ * @param photos     도장에 붙지 않은 사진(챕터 11 — 전자일기장은 도장이 없어도 만들어진다)
  * @param thinkboxes 생각상자 — <b>비공개도 들어간다</b>(개인 소장본이므로)
  * @param certs      VALID 인증서만. 회수본은 싣지 않는다
  * @param medCount   명상 재생 횟수
@@ -27,6 +29,7 @@ import java.util.List;
 public record EbookMaterials(
         String nickname,
         List<EbookStampRow> stamps,
+        List<EbookPhotoRow> photos,
         List<EbookThinkboxRow> thinkboxes,
         List<EbookCertRow> certs,
         int medCount,
@@ -35,6 +38,16 @@ public record EbookMaterials(
 
     public int stampCount() {
         return stamps.size();
+    }
+
+    /**
+     * 책으로 묶을 것이 하나도 없는가. 챕터 11 전까지는 <b>도장 수</b>로만 판단해서,
+     * 사진과 생각상자만 있는 사람은 만들 재료가 있는데도 400 을 받았다(항목 6 · Y10).
+     * 표지와 판권만 남은 책을 내보내지 않기 위한 최소 조건이라, 기준은 "무엇이든 하나" 다.
+     */
+    public boolean isEmpty() {
+        return stamps.isEmpty() && photos.isEmpty() && thinkboxes.isEmpty()
+                && certs.isEmpty() && medCount == 0;
     }
 
     public LocalDate firstDate() {
@@ -63,6 +76,9 @@ public record EbookMaterials(
                 .append(':').append(s.getExtManuscriptId() == null ? "-" : s.getExtManuscriptId())
                 .append(':').append(nullSafe(s.getUserSentence()).length())
                 .append('\n'));
+        // 사진도 정체성에 넣는다. 넣지 않으면 사진만 한 장 더 올린 사람이 "같은 책" 을 받는다.
+        photos.forEach(p -> sb.append("P").append(p.getPhotoId())
+                .append(':').append(nullSafe(p.getFileKey())).append('\n'));
         thinkboxes.forEach(t -> sb.append("T").append(t.getThinkboxId())
                 .append(':').append(t.isEdited() ? 1 : 0).append('\n'));
         certs.forEach(c -> sb.append("C").append(c.getSerialNo()).append('\n'));

@@ -258,7 +258,7 @@ else
         CREATE DATABASE $H17_A DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
         CREATE DATABASE $H17_B DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
   m -D "$H17_A" < "$H17_BASE" > /dev/null
-  for F in alter-ch7 alter-ch1-withdraw alter-ch8 alter-ch9 alter-ch10; do
+  for F in alter-ch7 alter-ch1-withdraw alter-ch8 alter-ch9 alter-ch10 alter-ch11; do
     if ! m -D "$H17_A" < "$F.sql" > /dev/null; then
       say "  ❌ $F.sql 이 사슬 위에서 실패했다 — 운영에서도 같은 자리에서 멈춘다"
       H17_BAD=$((H17_BAD + 1))

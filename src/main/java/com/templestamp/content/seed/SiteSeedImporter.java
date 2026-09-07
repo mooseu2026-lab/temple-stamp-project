@@ -11,6 +11,8 @@ import com.templestamp.course.Region;
 import com.templestamp.course.RegionMapper;
 import com.templestamp.course.SlotSite;
 import com.templestamp.course.SlotSiteMapper;
+import com.templestamp.course.SlotSiteService;
+import com.templestamp.global.error.BusinessException;
 import com.templestamp.kakao.KakaoMapService;
 import com.templestamp.kakao.dto.KakaoPlaceResponse;
 import com.templestamp.site.SiteElementMapper;
@@ -81,6 +83,7 @@ public class SiteSeedImporter implements CommandLineRunner {
     private final CourseMapper courseMapper;
     private final CourseSiteMapper courseSiteMapper;
     private final SlotSiteMapper slotSiteMapper;
+    private final SlotSiteService slotSiteService;
     private final KakaoMapService kakao;
 
     @Override
@@ -210,8 +213,13 @@ public class SiteSeedImporter implements CommandLineRunner {
                 ss.setRouteNote(s.get("sunroad_route"));
                 ss.setIsStar(SeedCsv.yes(s.get("sunroad_star")));
                 ss.setServingNote(s.get("serving_note"));
-                slotSiteMapper.upsert(ss);
-                candidates++;
+                // 유니크를 코드에서 먼저 본다 — upsert 는 남의 행을 조용히 고칠 수 있다(챕터 11 항목 14).
+                try {
+                    slotSiteService.assign(ss);
+                    candidates++;
+                } catch (BusinessException ex) {
+                    report.add("후보 중복(같은 트랙 다른 자리): " + candidateKey);
+                }
             }
         }
 

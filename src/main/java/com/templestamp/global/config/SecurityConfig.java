@@ -4,6 +4,7 @@ import com.templestamp.global.security.JsonAccessDeniedHandler;
 import com.templestamp.global.security.JsonAuthenticationEntryPoint;
 import com.templestamp.global.security.JwtAuthenticationFilter;
 import com.templestamp.global.security.JwtProvider;
+import com.templestamp.global.web.RequestIdFilter;
 import com.templestamp.user.UserMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -132,11 +133,21 @@ public class SecurityConfig {
         //   코드에 박아 두면 그때마다 다시 빌드해야 한다. .env 의 FRONTEND_URL 로 바꾼다
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept-Language"));
+        config.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "Accept-Language",
+                RequestIdFilter.HEADER));
+        // ★ X-Request-Id 를 허용 목록에 넣지 않으면 브라우저가 preflight 에서 막는다.
+        //   서버는 그 헤더를 읽을 준비가 돼 있는데(RequestIdFilter) 요청이 오지를 못했다(리뷰 3-2).
+
+        config.setExposedHeaders(List.of(RequestIdFilter.HEADER));
+        // ★ 응답 헤더도 따로 열어 줘야 자바스크립트가 읽는다. 오류 토스트에 붙일 문의 번호다.
 
         config.setAllowCredentials(true);
         // ★ 쿠키를 크로스 오리진으로 주고받게 허용. false 면 리프레시 쿠키가 실려 가지 않는다
         // ※ 이게 true 면 오리진에 "*" 를 쓸 수 없다 — 브라우저가 거부. 그래서 목록을 명시
+
+        config.setMaxAge(3600L);
+        // ★ preflight 를 1시간 캐시한다. 없으면 요청마다 OPTIONS 가 한 번씩 더 간다(리뷰 3-3).
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

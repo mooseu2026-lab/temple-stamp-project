@@ -207,8 +207,9 @@ public class StampService {
                     Boolean.TRUE.equals(request.hasOtherFace()));
         }
 
-        // v4 — 이동시간도 대표가 아니라 실제로 인증한 사찰 사이의 거리로 잰다
-        Integer shortfall = travelTimeShortfall(stamp.getPilgrimageId(), stamp.getSiteId());
+        // v4 — 이동시간도 대표가 아니라 실제로 인증한 사찰 사이의 거리로 잰다.
+        // 범위는 코스가 아니라 사람이다(챕터 11 결정 E) — 코스를 갈아타며 순간이동하는 길을 막는다.
+        Integer shortfall = travelTimeShortfall(userId, stamp.getSiteId());
         if (shortfall != null) {
             stampMapper.markPending(stampId, VerifyMethod.GPS_QR, null,
                     Stamp.PENDING_TRAVEL_TIME, sentence, phraseId, null);   // site_id 는 1단계에서 이미 박혔다
@@ -355,11 +356,14 @@ public class StampService {
     }
 
     /**
-     * 직전 완료 도장에서 지금까지 흐른 시간이 site_distance 의 최소 이동시간에 못 미치면
-     * 부족한 분을 돌려준다. 첫 도장이거나 등록되지 않은 쌍이면 null(검사 안 함).
+     * 직전 완료 도장에서 지금까지 흐른 시간이 최소 이동시간에 못 미치면 부족한 분을 돌려준다.
+     * 첫 도장이면 null(비교할 앞이 없다).
+     * <p>
+     * 범위는 <b>사용자</b>다(챕터 11 결정 E). 표에 없는 쌍은 {@code stamp.default-travel-minutes}
+     * 를 쓴다 — 이 값이 0이면 검사가 통째로 꺼지므로 운영에서는 0을 두지 않는다(결정 D).
      */
-    private Integer travelTimeShortfall(Long pilgrimageId, Long siteId) {
-        Long previousSiteId = stampMapper.findLastCompletedSiteId(pilgrimageId).orElse(null);
+    private Integer travelTimeShortfall(Long userId, Long siteId) {
+        Long previousSiteId = stampMapper.findLastCompletedSiteId(userId).orElse(null);
         if (previousSiteId == null) {
             return null;
         }
@@ -370,7 +374,7 @@ public class StampService {
             return null;
         }
 
-        Integer elapsed = stampMapper.findMinutesSinceLastCompleted(pilgrimageId).orElse(null);
+        Integer elapsed = stampMapper.findMinutesSinceLastCompleted(userId).orElse(null);
         if (elapsed == null || elapsed >= required) {
             return null;
         }

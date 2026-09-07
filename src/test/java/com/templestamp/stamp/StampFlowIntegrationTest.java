@@ -101,7 +101,7 @@ class StampFlowIntegrationTest {
     /* ---------------- ① 정상 흐름 ---------------- */
 
     @Test
-    @DisplayName("T-01 GPS → QR → 미션 = COMPLETED, 진행률 1/5, 보상 1건 이상")
+    @DisplayName("T-01 GPS → QR → 미션 = COMPLETED, 진행률 1/5, 보상 0건(챕터 11 — 도장 보상은 껐다)")
     void full_three_steps_complete_the_stamp() throws Exception {
         long stampId = gpsOk(1);
         qrOk(stampId, 1);
@@ -109,7 +109,8 @@ class StampFlowIntegrationTest {
         JsonNode result = mission(stampId, SENTENCE).get("data");
         assertThat(result.path("status").asText()).isEqualTo("COMPLETED");
         assertThat(result.path("progress").path("completedCount").asInt()).isEqualTo(1);
-        assertThat(result.path("rewards")).isNotEmpty();
+        // 챕터 11 결정 A — 도장마다 주던 보상 정책은 is_active=0 이다. 필드는 남고 목록만 빈다.
+        assertThat(result.path("rewards")).isEmpty();
         assertThat(result.path("courseCompleted").asBoolean()).isFalse();
 
         assertThat(dbStatus(stampId)).isEqualTo("COMPLETED");

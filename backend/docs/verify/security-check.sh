@@ -84,14 +84,18 @@ if [ "$ALLOW_HDR" = "0" ]; then ok "허용 밖 오리진에 Allow-Origin 을 주
 
 say ""
 say "── S12  개인정보 ───────────────────────────────────────────────"
-say "기대: 위치동의 없이 GPS 403 · 공개 인증서 닉네임 마스킹 · 비공개/타인얼굴은 전자책에서 제외."
+say "기대: 위치동의 없이 GPS 403 · 공개 인증서 닉네임 마스킹 · 공개 목록은 비공개 글을 빼고"
+say "     전자책은 타인 얼굴 사진만 뺀다(비공개는 싣는다 — 개인 소장본, 챕터 9 결정)."
 if grep -q 'requireLocationAgreement' src/main/java/com/templestamp/stamp/StampService.java; then
   ok "GPS 인증이 위치기반서비스 동의를 먼저 본다"; else ng "위치 동의 검사가 없다"; fi
 if grep -q 'maskNickname' src/main/java/com/templestamp/certificate/dto/CertificateVerifyResponse.java; then
   ok "공개 인증서 응답이 닉네임을 마스킹한다"; else ng "닉네임 마스킹이 없다"; fi
 PUBQ=$(grep -c 'is_private = 0' src/main/resources/mapper/thinkbox/ThinkboxMapper.xml || true)
-if [ "${PUBQ:-0}" -ge 1 ]; then ok "전자책 수록 질의가 is_private = 0 만 고른다"; else ng "전자책 질의에 is_private 필터가 없다"; fi
-say "  전자책 제외 대상 실측:"
+if [ "${PUBQ:-0}" -ge 1 ]; then ok "생각상자 공개 목록이 is_private = 0 만 고른다"; else ng "공개 목록에 is_private 필터가 없다"; fi
+# 전자책 쪽은 반대다 — 비공개를 싣고 타인 얼굴만 뺀다. 그 필터가 사라지면 남의 얼굴이 책에 실린다.
+FACEQ=$(grep -c 'has_other_face' src/main/resources/mapper/ebook/EbookMaterialMapper.xml || true)
+if [ "${FACEQ:-0}" -ge 2 ]; then ok "전자책 재료가 타인 얼굴 사진을 뺀다 (도장·낱장 둘 다)"; else ng "전자책 재료에 has_other_face 필터가 모자라다 ($FACEQ/2)"; fi
+say "  비공개·타인얼굴 실측:"
 q "SELECT CONCAT('    thinkbox 비공개 ', SUM(is_private), ' / 전체 ', COUNT(*)) FROM thinkbox;"
 q "SELECT CONCAT('    photo 비공개 ', SUM(is_private), ' · 타인얼굴 ', SUM(has_other_face), ' / 전체 ', COUNT(*)) FROM photo;"
 

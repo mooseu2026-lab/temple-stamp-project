@@ -304,7 +304,7 @@ INSERT IGNORE INTO reward_policy (reward_policy_id, code, reward_type, trigger_t
         '순례 도장', '사찰 한 곳을 인증할 때마다 여권에 도장이 찍힙니다.'),
     (2, 'RW-COURSE',    'COUPON',   'COURSE_COMPLETED',
         '코스 완주 쿠폰', '코스 하나를 완주하면 드리는 쿠폰입니다.'),
-    (3, 'RW-INTERIM',   'PHYSICAL', 'THREE_COURSES_COMPLETED',
+    (3, 'RW-INTERIM',   'DIGITAL',  'EVERY_THREE_COURSES',
         '중간 편집본', '세 코스를 마치면 중간 편집본을 보내 드립니다.'),
     (4, 'RW-HOEHYANG',  'PHYSICAL', 'ALL_COMPLETED',
         '회향 기념품', '모든 코스를 마친 분께 드리는 회향 기념품입니다.');

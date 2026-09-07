@@ -4,7 +4,7 @@
 <mapper namespace="com.templestamp.reward.UserRewardMapper">
 
     <sql id="columns">
-        user_reward_id, user_id, reward_policy_id, stamp_id, pilgrimage_id, status,
+        user_reward_id, user_id, reward_policy_id, stamp_id, pilgrimage_id, milestone, status,
         audit_score, audit_detail, granted_at, claimed_at, resolved_at, resolved_by
     </sql>
 
@@ -16,6 +16,11 @@
                ur.reward_policy_id,
                rp.name       AS reward_name,
                rp.reward_type,
+               <!--
+                 꺼진 정책(is_active=0)으로 받았던 과거 보상. 행은 지우지 않는다 — 이미 적립된 것의
+                 근거이기 때문이다. 대신 화면이 "지난 혜택" 으로 구분해 보여 준다(챕터 11 항목 8).
+               -->
+               (rp.is_active = 0) AS legacy,
                ur.status,
                ur.needs_review,
                ur.stamp_id,
@@ -38,14 +43,39 @@
     <insert id="grant" parameterType="com.templestamp.reward.UserReward"
             useGeneratedKeys="true" keyProperty="userRewardId">
         INSERT IGNORE INTO user_reward (user_id, reward_policy_id, stamp_id, pilgrimage_id,
-                                        status, granted_at)
-        VALUES (#{userId}, #{rewardPolicyId}, #{stampId}, #{pilgrimageId}, 'GRANTED', NOW())
+                                        milestone, status, granted_at)
+        VALUES (#{userId}, #{rewardPolicyId}, #{stampId}, #{pilgrimageId},
+                #{milestone}, 'GRANTED', NOW())
     </insert>
 
     <select id="findRowById" resultType="com.templestamp.reward.dto.RewardRow">
         <include refid="rowSelect"/>
         WHERE ur.user_reward_id = #{userRewardId}
     </select>
+
+    <!--
+      보상 한 행을 집는 조건. 축이 셋이다 —
+        도장 단위   stamp_id
+        코스 단위   pilgrimage_id
+        사용자 단위 user_id + (도장·코스가 비어 있음) + 마일스톤
+      사용자 단위를 코스 id 로 집으면 "3번째로 완주한 코스가 무엇이냐" 라는 우연이 키가 된다(리뷰 2-2).
+    -->
+    <sql id="scopePredicate">
+        <choose>
+            <when test="stampId != null">
+                AND stamp_id = #{stampId}
+            </when>
+            <when test="pilgrimageId != null">
+                AND pilgrimage_id = #{pilgrimageId}
+            </when>
+            <otherwise>
+                AND user_id = #{userId}
+                AND stamp_id IS NULL
+                AND pilgrimage_id IS NULL
+                AND IFNULL(milestone, 0) = IFNULL(#{milestone}, 0)
+            </otherwise>
+        </choose>
+    </sql>
 
     <select id="findRow" resultType="com.templestamp.reward.dto.RewardRow">
         <include refid="rowSelect"/>
@@ -54,8 +84,14 @@
             <when test="stampId != null">
                 AND ur.stamp_id = #{stampId}
             </when>
-            <otherwise>
+            <when test="pilgrimageId != null">
                 AND ur.pilgrimage_id = #{pilgrimageId}
+            </when>
+            <otherwise>
+                AND ur.user_id = #{userId}
+                AND ur.stamp_id IS NULL
+                AND ur.pilgrimage_id IS NULL
+                AND IFNULL(ur.milestone, 0) = IFNULL(#{milestone}, 0)
             </otherwise>
         </choose>
     </select>
@@ -140,14 +176,7 @@
             resolved_by  = NULL
         WHERE reward_policy_id = #{rewardPolicyId}
           AND status = 'REVOKED'
-        <choose>
-            <when test="stampId != null">
-                AND stamp_id = #{stampId}
-            </when>
-            <otherwise>
-                AND pilgrimage_id = #{pilgrimageId}
-            </otherwise>
-        </choose>
+        <include refid="scopePredicate"/>
     </update>
 
     <!-- ============ 완주 취소 연쇄 (챕터 7 §2-4) ============ -->

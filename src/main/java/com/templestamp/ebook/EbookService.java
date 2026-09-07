@@ -37,6 +37,8 @@ public class EbookService {
 
     /** 다운로드 링크가 사는 시간(§2-4). 링크를 퍼 날라도 10분 뒤에는 열리지 않는다. */
     private static final long DOWNLOAD_SECONDS = 600;
+    /** 전자일기장 한 권이 나오는 간격. CompletionService 의 같은 값과 짝이다(챕터 11 결정 A). */
+    private static final int INTERIM_COURSE_COUNT = 3;
     private static final String PDF = "PDF";
     private static final String EPUB = "EPUB";
     /** 전자책이 삭제될 때 파일 키가 큐로 갈 때의 사유. */
@@ -52,23 +54,47 @@ public class EbookService {
 
     /* ---------------- 요청 ---------------- */
 
+    /** 종류를 적지 않은 옛 호출. 개인 소장본이다. */
+    @Transactional
+    public EbookResponse request(Long userId) {
+        return request(userId, Ebook.PERSONAL);
+    }
+
     /**
      * 만들기 요청. 같은 재료면 새로 만들지 않는다.
+     * <p>
+     * 종류는 둘이다. <b>PERSONAL</b> 은 스냅샷 해시로 묶이고, <b>INTERIM</b>(전자일기장)은
+     * {@code (사용자, 종류, 마일스톤)} 으로 묶인다 — 3·6·9·12 마다 다른 책이기 때문이다.
+     * INTERIM 을 달라고 했는데 아직 3코스에 못 미치면 거절하지 않고 개인 소장본으로 내린다.
+     * 사용자가 원한 것은 "지금까지의 내 기록" 이지 이름이 아니다(챕터 11 항목 6).
+     * <p>
+     * 재료가 <b>하나도</b> 없을 때만 400 이다. 도장 수로 재던 옛 기준은 사진과 생각상자만 있는
+     * 사람을 막았다 — 전자일기장은 도장을 요구하지 않는다(결정 B).
      *
      * @return 이미 완성된 같은 책이면 그 행(컨트롤러가 200), 아니면 대기 행(202)
      */
     @Transactional
-    public EbookResponse request(Long userId) {
+    public EbookResponse request(Long userId, String requestedType) {
         EbookMaterials m = materialsOf(userId);
-        if (m.stampCount() == 0) {
+        if (m.isEmpty()) {
             throw new BusinessException(ErrorCode.EBOOK_4001);
         }
-        String hash = m.snapshotHash();
 
-        Ebook same = ebookMapper.findByUserAndHash(userId, hash).orElse(null);
-        if (same != null && (same.isReady() || same.isRequested())) {
-            // FAILED 는 "없는 것" 으로 본다 — 실패한 책을 영원히 돌려주면 다시 시도할 길이 없다.
-            return toResponse(same);
+        Integer milestone = interimMilestone(userId, requestedType);
+        if (milestone != null) {
+            var alive = ebookMapper.findAliveByUserTypeAndMilestone(userId, Ebook.INTERIM, milestone);
+            if (alive.isPresent()) {
+                return toResponse(alive.get());   // 이 마일스톤의 책은 이미 있다
+            }
+        }
+
+        String hash = m.snapshotHash();
+        if (milestone == null) {
+            Ebook same = ebookMapper.findByUserAndHash(userId, hash).orElse(null);
+            if (same != null && (same.isReady() || same.isRequested())) {
+                // FAILED 는 "없는 것" 으로 본다 — 실패한 책을 영원히 돌려주면 다시 시도할 길이 없다.
+                return toResponse(same);
+            }
         }
 
         if (ebookMapper.countRequested(userId) >= 1) {
@@ -77,6 +103,15 @@ public class EbookService {
         if (ebookMapper.countReadyToday(userId) >= ebookProperties.dailyLimit()) {
             throw new BusinessException(ErrorCode.EBOOK_4290,
                     "하루에 %d권까지 만들 수 있습니다.".formatted(ebookProperties.dailyLimit()));
+        }
+
+        if (milestone != null) {
+            // 전자일기장은 해시로 묶지 않는다. 스냅샷 유니크까지 걸면 같은 재료의 개인 소장본과
+            // 부딪혀, 3코스 책이 있다는 이유로 개인 소장본을 만들 수 없게 된다.
+            Ebook diary = enqueue(userId, null, Ebook.INTERIM, milestone);
+            log.info("전자일기장 요청. userId={}, ebookId={}, milestone={}",
+                    userId, diary.getEbookId(), milestone);
+            return toResponse(diary);
         }
 
         Ebook row = Ebook.builder()
@@ -94,6 +129,24 @@ public class EbookService {
         }
         log.info("전자책 요청. userId={}, ebookId={}, hash={}", userId, row.getEbookId(), hash.substring(0, 8));
         return toResponse(row);
+    }
+
+    /**
+     * 이 요청이 전자일기장인가, 그렇다면 몇 코스짜리인가.
+     * <p>
+     * 마일스톤은 <b>완주 수를 3으로 내림</b>한 값이다 — 4코스를 끝낸 사람이 손으로 요청하면
+     * 4가 아니라 3짜리 책을 받는다. 그래야 자동 적립분(3·6·9·12)과 같은 행을 가리켜
+     * 같은 책이 두 권 생기지 않는다.
+     *
+     * @return 전자일기장이면 3·6·9·12 중 하나, 아니면 null(개인 소장본으로 처리한다)
+     */
+    private Integer interimMilestone(Long userId, String requestedType) {
+        if (requestedType == null || !Ebook.INTERIM.equalsIgnoreCase(requestedType.trim())) {
+            return null;
+        }
+        int completed = materialMapper.countCompletedCourses(userId);
+        int floor = completed - (completed % INTERIM_COURSE_COUNT);
+        return floor >= INTERIM_COURSE_COUNT ? floor : null;
     }
 
     /** 응답이 200 인지 202 인지 — 이미 완성돼 있으면 200 이다. 컨트롤러가 이것으로 상태코드를 고른다. */
@@ -117,7 +170,8 @@ public class EbookService {
             return false;   // 다른 스레드가 이미 가져갔다
         }
         try {
-            PdfBuilder.PdfResult pdf = pdfBuilder.build(materialsOf(row.getUserId()));
+            PdfBuilder.PdfResult pdf = pdfBuilder.build(
+                    materialsOf(row.getUserId()), row.getEbookType(), row.getMilestone());
             String key = "EBOOK/%d/%d.pdf".formatted(row.getUserId(), ebookId);
             storageClient.put(key, pdf.bytes(), "application/pdf");
             ebookMapper.markReady(ebookId, key, pdf.pageCount(), pdf.bytes().length);
@@ -226,7 +280,23 @@ public class EbookService {
      */
     @Transactional
     public Ebook enqueue(Long userId, Long pilgrimageId, String ebookType) {
-        if (pilgrimageId != null) {
+        return enqueue(userId, pilgrimageId, ebookType, null);
+    }
+
+    /**
+     * 마일스톤이 있는 대기열(전자일기장 3·6·9·12).
+     * <p>
+     * 같은 종류라도 마일스톤이 다르면 <b>다른 책</b>이다. 사용자+종류로만 막으면 6코스 책이
+     * 3코스 책과 같은 것으로 취급돼 만들어지지 않는다.
+     */
+    @Transactional
+    public Ebook enqueue(Long userId, Long pilgrimageId, String ebookType, Integer milestone) {
+        if (milestone != null) {
+            var existing = ebookMapper.findAliveByUserTypeAndMilestone(userId, ebookType, milestone);
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        } else if (pilgrimageId != null) {
             var existing = ebookMapper.findByPilgrimageAndType(pilgrimageId, ebookType);
             if (existing.isPresent()) {
                 return existing.get();
@@ -242,10 +312,12 @@ public class EbookService {
                 .userId(userId)
                 .pilgrimageId(pilgrimageId)
                 .ebookType(ebookType)
+                .milestone(milestone)
                 .status(Ebook.REQUESTED)
                 .build();
         ebookMapper.enqueue(ebook);
-        log.info("전자책 대기열 등록. userId={}, type={}, pilgrimageId={}", userId, ebookType, pilgrimageId);
+        log.info("전자책 대기열 등록. userId={}, type={}, pilgrimageId={}, milestone={}",
+                userId, ebookType, pilgrimageId, milestone);
         return ebook;
     }
 
@@ -271,6 +343,7 @@ public class EbookService {
         return new EbookMaterials(
                 materialMapper.findNickname(userId),
                 materialMapper.findStamps(userId),
+                materialMapper.findLoosePhotos(userId),
                 materialMapper.findThinkboxes(userId),
                 materialMapper.findValidCerts(userId),
                 materialMapper.countMeditationLogs(userId),
@@ -282,6 +355,7 @@ public class EbookService {
         row.setEbookId(e.getEbookId());
         row.setUserId(e.getUserId());
         row.setEbookType(e.getEbookType());
+        row.setMilestone(e.getMilestone());
         row.setStatus(e.getStatus());
         row.setPdfKey(e.getPdfKey());
         row.setPageCount(e.getPageCount());

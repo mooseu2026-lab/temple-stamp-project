@@ -20,11 +20,13 @@ public class RewardRow {
     private String nickname;
     private Long rewardPolicyId;
     private String rewardName;     // reward_policy.name 조인
-    private String rewardType;     // STAMP / COUPON / PHYSICAL
+    private String rewardType;     // STAMP / COUPON / PHYSICAL / DIGITAL
+    private boolean legacy;        // 꺼진 정책(is_active=0)으로 받았던 과거 보상 — 신규 적립은 없다
     private String status;
     private boolean needsReview;   // 완주가 취소됐는데 이미 움직인 보상 — 심사 목록 맨 위로 온다
     private Long stampId;
     private Long pilgrimageId;
+    private Integer milestone;     // 3·6·9·12 — 전자일기장처럼 여러 번 받는 보상만
     private String courseName;
     private LocalDateTime earnedAt;    // user_reward.granted_at
     private LocalDateTime claimedAt;   // 미청구면 null

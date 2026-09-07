@@ -100,8 +100,10 @@ cors:
 stamp:
   # GPS 통과 후 QR·다짐까지 마쳐야 하는 시간(분)
   session-minutes: 60
-  # site_distance 에 없는 사찰 쌍의 기본 최소 이동시간(분). 0이면 검사하지 않는다
-  default-travel-minutes: 0
+  # site_distance 에 없는 사찰 쌍의 기본 최소 이동시간(분).
+  # ★ 0이면 검사가 통째로 꺼진다 — 운영 금지(챕터 11 결정 D). 대표 사찰 240쌍이 표에 들어오기
+  #   전까지는 후보 쌍이 전부 이 값으로 걸러진다.
+  default-travel-minutes: 15
   # 하루에 받을 수 있는 도장 수 (명세 확정)
   daily-limit: 5
   # 예외 접수 하루 한도 (명세 확정)

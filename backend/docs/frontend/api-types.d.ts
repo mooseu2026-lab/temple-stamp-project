@@ -290,6 +290,7 @@ export interface DownloadUrlResponse {
 export interface EbookMaterials {
   nickname?: string | null;
   stamps: EbookStampRow[];
+  photos: EbookPhotoRow[];
   thinkboxes: EbookThinkboxRow[];
   certs: EbookCertRow[];
   medCount: number;
@@ -316,6 +317,7 @@ export interface EbookResponse {
   ebookId?: number | null;
   courseName?: string | null;
   ebookType?: string | null;
+  milestone?: number | null;
   status?: string | null;
   downloadable: boolean;
   pageCount?: number | null;
@@ -772,6 +774,7 @@ export interface RewardResponse {
   rewardType?: string | null;
   status?: string | null;
   claimable: boolean;
+  legacy: boolean;
   earnedAt?: string | null;
 }
 

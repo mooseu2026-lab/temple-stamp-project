@@ -184,17 +184,66 @@ class RewardServiceTest {
     }
 
     @Test
-    @DisplayName("완주가 취소되면 손대지 않은 것만 회수하고, 움직인 것은 사람이 보도록 표시한다")
+    @DisplayName("조건이 깨지면 손대지 않은 것만 회수하고, 움직인 것은 사람이 보도록 표시한다")
     void cancel_revokes_only_untouched() {
         long physical = physicalReward();
-        long digital = digitalReward();
-        rewardService.claim(userId, physical, shipping());          // 실물은 이미 신청까지 갔다
 
-        rewardService.revokeOrFlagForPilgrimage(pilgrimageId);
+        // ① 아무도 손대지 않은 것 — 그대로 회수된다.
+        rewardService.revokeOrFlagByTrigger(userId, RewardPolicy.ON_ALL_COMPLETED);
+        assertThat(status(physical)).as("손대지 않은 것은 회수").isEqualTo("REVOKED");
 
-        assertThat(status(digital)).as("아무도 손대지 않은 것은 회수").isEqualTo("REVOKED");
+        // ② 조건이 다시 성립해 되살아난 뒤 신청까지 갔다면 — 상태를 바꾸지 않고 사람이 본다.
+        rewardService.grantOrRestore(userId, RewardPolicy.ON_ALL_COMPLETED, null, pilgrimageId);
+        rewardService.claim(userId, physical, shipping());
+        rewardService.revokeOrFlagByTrigger(userId, RewardPolicy.ON_ALL_COMPLETED);
+
         assertThat(status(physical)).as("신청된 것은 상태를 바꾸지 않는다").isEqualTo("CLAIMED");
         assertThat(needsReview(physical)).as("대신 사람이 본다").isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("전자일기장은 코스가 취소돼도 회수되지 않는다 — 챕터 11 결정 C")
+    void diary_survives_cancellation() {
+        long diary = digitalReward();
+
+        rewardService.revokeOrFlagForPilgrimage(pilgrimageId);
+        rewardService.revokeOrFlagByTrigger(userId, RewardPolicy.ON_ALL_COMPLETED);
+
+        assertThat(status(diary)).as("이미 읽은 책을 뺏을 수는 없다").isEqualTo("GRANTED");
+        assertThat(needsReview(diary)).isZero();
+    }
+
+    @Test
+    @DisplayName("꺼진 정책의 과거 보상은 legacy 이고 신청할 수 없다 — 목록과 서버가 같은 이유로 막는다")
+    void legacy_rewards_are_shown_but_not_claimable() {
+        // 꺼진 실물 정책의 과거 행을 손으로 심는다. grant 는 is_active=1 만 보므로 이 길밖에 없다.
+        Long stalePolicy = jdbc.queryForObject(
+                "SELECT reward_policy_id FROM reward_policy WHERE is_active = 0 ORDER BY reward_policy_id LIMIT 1",
+                Long.class);
+        jdbc.update("UPDATE reward_policy SET reward_type = 'PHYSICAL' WHERE reward_policy_id = ?", stalePolicy);
+        try {
+            jdbc.update("""
+                    INSERT INTO user_reward (user_id, reward_policy_id, pilgrimage_id, status, granted_at)
+                    VALUES (?, ?, ?, 'GRANTED', NOW())
+                    """, userId, stalePolicy, pilgrimageId);
+            long legacy = jdbc.queryForObject(
+                    "SELECT user_reward_id FROM user_reward WHERE user_id = ? AND reward_policy_id = ?",
+                    Long.class, userId, stalePolicy);
+
+            RewardResponse row = rewardService.getRewards(userId).stream()
+                    .filter(r -> r.userRewardId().equals(legacy)).findFirst().orElseThrow();
+            assertThat(row.legacy()).as("지난 혜택으로 표시된다").isTrue();
+            assertThat(row.claimable()).as("실물이어도 신청할 수 없다").isFalse();
+
+            assertThatThrownBy(() -> rewardService.claim(userId, legacy, shipping()))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.REWARD_4001);
+        } finally {
+            jdbc.update("DELETE FROM user_reward WHERE user_id = ? AND reward_policy_id = ?", userId, stalePolicy);
+            jdbc.update("UPDATE reward_policy SET reward_type = 'STAMP' WHERE reward_policy_id = ? AND code = 'RW-STAMP'", stalePolicy);
+            jdbc.update("UPDATE reward_policy SET reward_type = 'COUPON' WHERE reward_policy_id = ? AND code = 'RW-COURSE'", stalePolicy);
+        }
     }
 
     /* ---------------- 내부 ---------------- */
@@ -215,9 +264,12 @@ class RewardServiceTest {
                 """, Long.class, userId);
     }
 
-    /** 실물이 아닌 보상(코스 완주 쿠폰). */
+    /**
+     * 실물이 아닌 보상. 챕터 11 에서 코스 완주 쿠폰(RW-COURSE)이 꺼졌으므로
+     * 그 자리를 전자일기장(DIGITAL · 3코스마다)이 잇는다.
+     */
     private long digitalReward() {
-        rewardService.grant(userId, RewardPolicy.ON_COURSE_COMPLETED, null, pilgrimageId);
+        rewardService.grantOrRestore(userId, RewardPolicy.ON_EVERY_THREE_COURSES, null, null, 3);
         return jdbc.queryForObject("""
                 SELECT ur.user_reward_id FROM user_reward ur
                        JOIN reward_policy rp ON rp.reward_policy_id = ur.reward_policy_id

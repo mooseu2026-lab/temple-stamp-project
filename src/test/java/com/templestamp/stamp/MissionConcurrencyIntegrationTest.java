@@ -99,8 +99,9 @@ class MissionConcurrencyIntegrationTest {
         assertThat(validCertificates(userA)).as("A 의 유효 인증서").isEqualTo(1);
         assertThat(validCertificates(userB)).as("B 의 유효 인증서").isEqualTo(1);
         assertThat(duplicatedSerials()).as("번호 중복").isZero();
-        assertThat(courseRewards(userA)).as("A 의 코스 완주 보상").isEqualTo(1);
-        assertThat(courseRewards(userB)).as("B 의 코스 완주 보상").isEqualTo(1);
+        // 챕터 11 결정 A — 코스 완주 쿠폰 정책은 껐다. 3코스 전에는 사은품이 없다.
+        assertThat(courseRewards(userA)).as("A 의 코스 완주 보상").isZero();
+        assertThat(courseRewards(userB)).as("B 의 코스 완주 보상").isZero();
     }
 
     @RepeatedTest(5)

@@ -40,6 +40,8 @@ public class Ebook {
     private Long pilgrimageId;
     private String ebookType;
     private String snapshotHash;   // 재료 정렬 → SHA-256. 같으면 같은 책(챕터 9 §2-1)
+    /** 전자일기장(INTERIM)의 3·6·9·12. 그 밖의 종류는 null. */
+    private Integer milestone;
     private String status;
     private String pdfKey;
     private String epubKey;

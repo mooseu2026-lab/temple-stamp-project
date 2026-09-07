@@ -25,8 +25,10 @@ public interface UserRewardMapper {
 
     /** 방금 적립한 행을 근거 키로 되찾는다. 목록 응답에 바로 실어 주기 위해서다. */
     Optional<RewardRow> findRow(@Param("rewardPolicyId") Long rewardPolicyId,
+                                @Param("userId") Long userId,
                                 @Param("stampId") Long stampId,
-                                @Param("pilgrimageId") Long pilgrimageId);
+                                @Param("pilgrimageId") Long pilgrimageId,
+                                @Param("milestone") Integer milestone);
 
     List<RewardRow> findRowsByUserId(@Param("userId") Long userId);
 
@@ -43,8 +45,10 @@ public interface UserRewardMapper {
      * 신청·심사 흔적은 지운다. 되살아난 보상은 "아직 아무도 손대지 않은" 상태여야 한다.
      */
     int restoreRevoked(@Param("rewardPolicyId") Long rewardPolicyId,
+                       @Param("userId") Long userId,
                        @Param("stampId") Long stampId,
-                       @Param("pilgrimageId") Long pilgrimageId);
+                       @Param("pilgrimageId") Long pilgrimageId,
+                       @Param("milestone") Integer milestone);
 
     /** 심사 결과 반영. 신청 접수(CLAIMED)·검토 대기(UNDER_REVIEW) 둘 다에서 넘어온다. */
     int resolve(@Param("userRewardId") Long userRewardId,

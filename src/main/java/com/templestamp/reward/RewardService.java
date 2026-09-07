@@ -23,7 +23,10 @@ import java.util.Set;
 @Transactional(readOnly = true)
 public class RewardService {
 
-    /** 수령 신청을 받는 보상 종류. reward_policy.reward_type 은 STAMP / COUPON / PHYSICAL 셋이다. */
+    /**
+     * 수령 신청을 받는 보상 종류. 챕터 11 이후 살아 있는 PHYSICAL 은 맞춤형 특별앨범 하나뿐이다
+     * (전자일기장은 DIGITAL — 받는 순간 개인 소장이라 신청·배송이 없다).
+     */
     private static final String PHYSICAL = "PHYSICAL";
 
     /**
@@ -43,6 +46,8 @@ public class RewardService {
      */
     public static boolean claimable(RewardRow row, Long viewerId) {
         return PHYSICAL.equals(row.getRewardType())
+                // 꺼진 정책의 과거 행은 보여 주기만 한다 — 이제 와서 배송을 받아 줄 수 없다.
+                && !row.isLegacy()
                 && CLAIMABLE_STATUSES.contains(row.getStatus())
                 && row.getUserId() != null && row.getUserId().equals(viewerId);
     }
@@ -71,14 +76,17 @@ public class RewardService {
             UserReward reward = new UserReward();
             reward.setUserId(userId);
             reward.setRewardPolicyId(policy.getRewardPolicyId());
+            // 사용자 단위 보상은 여기서도 코스 id 를 비운다 — 두 경로가 다른 키를 쓰면 유니크가 헛돈다.
+            boolean userScoped = policy.isUserScoped();
             reward.setStampId(stampScoped ? stampId : null);
-            reward.setPilgrimageId(stampScoped ? null : pilgrimageId);
+            reward.setPilgrimageId((stampScoped || userScoped) ? null : pilgrimageId);
 
             if (userRewardMapper.grant(reward) == 0) {
                 continue;   // 이미 적립돼 있었다
             }
             userRewardMapper
-                    .findRow(policy.getRewardPolicyId(), reward.getStampId(), reward.getPilgrimageId())
+                    .findRow(policy.getRewardPolicyId(), userId,
+                            reward.getStampId(), reward.getPilgrimageId(), reward.getMilestone())
                     .map(row -> RewardResponse.from(row, claimable(row, userId)))
                     .ifPresent(granted::add);
         }
@@ -97,23 +105,38 @@ public class RewardService {
     @Transactional
     public List<RewardResponse> grantOrRestore(Long userId, String triggerType,
                                                Long stampId, Long pilgrimageId) {
+        return grantOrRestore(userId, triggerType, stampId, pilgrimageId, null);
+    }
+
+    /**
+     * 마일스톤이 있는 보상(전자일기장 3·6·9·12)까지 받는 쪽.
+     * 사용자 단위 보상은 <b>코스가 아니라 사람</b>으로 묶인다 — 코스 id 로 묶으면 반려·재승인에서 행이 는다.
+     */
+    @Transactional
+    public List<RewardResponse> grantOrRestore(Long userId, String triggerType,
+                                               Long stampId, Long pilgrimageId, Integer milestone) {
         List<RewardResponse> changed = new ArrayList<>();
 
         for (RewardPolicy policy : policyMapper.findByTrigger(triggerType)) {
             boolean stampScoped = policy.isStampScoped();
+            boolean userScoped = policy.isUserScoped();
             Long scopedStampId = stampScoped ? stampId : null;
-            Long scopedPilgrimageId = stampScoped ? null : pilgrimageId;
+            // 사용자 단위면 코스 id 를 비운다. 그래야 user_key 생성 컬럼이 채워지고 유니크가 걸린다.
+            Long scopedPilgrimageId = (stampScoped || userScoped) ? null : pilgrimageId;
+            Integer scopedMilestone = userScoped ? milestone : null;
 
             UserReward reward = new UserReward();
             reward.setUserId(userId);
             reward.setRewardPolicyId(policy.getRewardPolicyId());
             reward.setStampId(scopedStampId);
             reward.setPilgrimageId(scopedPilgrimageId);
+            reward.setMilestone(scopedMilestone);
 
             boolean touched = userRewardMapper.grant(reward) > 0;
             if (!touched) {
                 touched = userRewardMapper.restoreRevoked(
-                        policy.getRewardPolicyId(), scopedStampId, scopedPilgrimageId) > 0;
+                        policy.getRewardPolicyId(), userId, scopedStampId,
+                        scopedPilgrimageId, scopedMilestone) > 0;
                 if (touched) {
                     log.info("완주가 다시 성립해 보상을 되살렸다. userId={}, policy={}",
                             userId, policy.getRewardPolicyId());
@@ -123,7 +146,8 @@ public class RewardService {
                 continue;   // 이미 있고 회수된 적도 없다 — 건드릴 것이 없다
             }
             userRewardMapper
-                    .findRow(policy.getRewardPolicyId(), scopedStampId, scopedPilgrimageId)
+                    .findRow(policy.getRewardPolicyId(), userId, scopedStampId,
+                            scopedPilgrimageId, scopedMilestone)
                     .map(row -> RewardResponse.from(row, claimable(row, userId)))
                     .ifPresent(changed::add);
         }
@@ -150,6 +174,10 @@ public class RewardService {
             throw new BusinessException(ErrorCode.AUTH_4032);
         }
         if (!PHYSICAL.equals(row.getRewardType())) {
+            throw new BusinessException(ErrorCode.REWARD_4001);
+        }
+        // 꺼진 정책의 과거 행. claimable 이 false 인 것을 서버도 같은 이유로 막는다.
+        if (row.isLegacy()) {
             throw new BusinessException(ErrorCode.REWARD_4001);
         }
         if (!CLAIMABLE_STATUSES.contains(row.getStatus())) {
@@ -211,6 +239,10 @@ public class RewardService {
      * <p>
      * 실물 기념품은 이미 택배를 탔을 수 있다. 시스템이 그것까지 REVOKED 로 바꾸면
      * 장부는 깨끗해지지만 실제와 달라진다 — 그 판단은 사람이 해야 한다(함정 6).
+     * <p>
+     * <b>전자일기장은 이 그물에 걸리지 않는다</b>(챕터 11 결정 C). 사용자 단위 보상이라
+     * {@code pilgrimage_id} 가 NULL 이고, 코스 하나가 취소돼도 이미 읽은 책을 뺏을 수는 없다.
+     * 회수 대상은 {@code ALL_COMPLETED} 의 특별앨범뿐이다.
      */
     @Transactional
     public void revokeOrFlagForPilgrimage(Long pilgrimageId) {

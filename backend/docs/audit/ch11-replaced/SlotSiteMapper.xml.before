@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.course.SlotSiteMapper">
+
+  <insert id="upsert">
+    INSERT INTO slot_site (course_site_id, site_id, track, sort_no, route_note, is_star, serving_note)
+    VALUES (#{courseSiteId}, #{siteId}, #{track}, #{sortNo}, #{routeNote}, #{isStar}, #{servingNote})
+    ON DUPLICATE KEY UPDATE sort_no = VALUES(sort_no), route_note = VALUES(route_note),
+                            is_star = VALUES(is_star), serving_note = VALUES(serving_note)
+    <!-- [RULE] 삭제 후 재삽입 금지. 후보를 빼려면 관리자 API 의 개별 DELETE 로 -->
+  </insert>
+
+  <select id="exists" resultType="boolean">
+    SELECT COUNT(*) > 0 FROM slot_site WHERE course_site_id = #{courseSiteId} AND site_id = #{siteId}
+  </select>
+
+  <!-- 공개 응답: ACTIVE 후보 전부. 과포화(is_congested)는 숨기지 않고 congested 로 실어 보낸다 —
+       유일한 후보가 과포화면 목록이 통째로 비어 "대신 갈 곳이 없다" 가 아니라 "갈 곳 자체가 없다" 로 읽힌다. -->
+  <select id="findByCourse" resultType="com.templestamp.course.dto.SlotCandidateRow">
+    SELECT ss.course_site_id AS courseSiteId, ss.site_id AS siteId,
+           COALESCE(si.name, s.name) AS siteName,
+           ss.track AS track, ss.sort_no AS sortNo, ss.route_note AS routeNote,
+           ss.is_star AS isStar, ss.serving_note AS servingNote,
+           ss.is_congested AS congested,
+           s.status AS siteStatus
+      FROM slot_site ss
+      JOIN course_site cs ON cs.course_site_id = ss.course_site_id AND cs.course_id = #{courseId}
+      JOIN site s ON s.site_id = ss.site_id
+      LEFT JOIN site_i18n si ON si.site_id = s.site_id AND si.locale = #{locale}
+     WHERE s.status = 'ACTIVE'
+     ORDER BY cs.position, ss.track, ss.sort_no
+  </select>
+
+  <update id="markCongested">
+    UPDATE slot_site SET is_congested = 1 WHERE site_id = #{siteId}
+  </update>
+
+</mapper>

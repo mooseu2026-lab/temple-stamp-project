@@ -128,10 +128,10 @@ public interface StampMapper {
     /* ---------------- 이동시간 검증 ---------------- */
 
     /** 같은 순례에서 직전에 완료한 도장의 사찰. 없으면 첫 도장이다. */
-    Optional<Long> findLastCompletedSiteId(@Param("pilgrimageId") Long pilgrimageId);
+    Optional<Long> findLastCompletedSiteId(@Param("userId") Long userId);
 
     /** 직전 완료 시각으로부터 지금까지 흐른 분. 직전 도장이 없으면 비어 있다. */
-    Optional<Integer> findMinutesSinceLastCompleted(@Param("pilgrimageId") Long pilgrimageId);
+    Optional<Integer> findMinutesSinceLastCompleted(@Param("userId") Long userId);
 
     /* ---------------- 관리자 ---------------- */
 

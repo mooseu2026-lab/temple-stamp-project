@@ -32,11 +32,15 @@ public class EbookController {
      * 상태코드가 둘이다 — <b>202</b> 는 "받아 두었다, 곧 만든다", <b>200</b> 은
      * "같은 재료의 책이 이미 있으니 그것을 준다" 다. 프론트는 202 면 잠시 뒤 다시 조회하고
      * 200 이면 바로 링크를 받으러 가면 된다. 둘을 한 코드로 뭉치면 그 분기를 본문에서 다시 읽어야 한다.
+     * <p>
+     * {@code type=INTERIM} 이면 전자일기장이다(챕터 11 결정 B). 3코스에 못 미치면 거절하지 않고
+     * 개인 소장본으로 내려서 만든다 — 엔드포인트를 새로 파지 않는 이유이기도 하다.
      */
     @PostMapping
     public ResponseEntity<ApiResponse<EbookResponse>> request(
-            @AuthenticationPrincipal AuthenticatedUser user) {
-        EbookResponse created = ebookService.request(user.userId());
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "PERSONAL") String type) {
+        EbookResponse created = ebookService.request(user.userId(), type);
         HttpStatus status = ebookService.isAlreadyReady(created) ? HttpStatus.OK : HttpStatus.ACCEPTED;
         return ResponseEntity.status(status).body(ApiResponse.ok(created));
     }

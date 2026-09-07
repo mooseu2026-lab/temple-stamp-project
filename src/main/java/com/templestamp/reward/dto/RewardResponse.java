@@ -14,6 +14,7 @@ public record RewardResponse(
         String rewardType,
         String status,
         boolean claimable,          // PHYSICAL && 청구 전 — 계산값
+        boolean legacy,             // 꺼진 정책의 과거 보상. 표시는 하되 신규 적립은 없다
         LocalDateTime earnedAt
 ) {
     /**
@@ -23,6 +24,6 @@ public record RewardResponse(
      */
     public static RewardResponse from(RewardRow row, boolean claimable) {
         return new RewardResponse(row.getUserRewardId(), row.getRewardName(), row.getRewardType(),
-                row.getStatus(), claimable, row.getEarnedAt());
+                row.getStatus(), claimable, row.isLegacy(), row.getEarnedAt());
     }
 }

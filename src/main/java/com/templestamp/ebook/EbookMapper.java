@@ -22,6 +22,11 @@ public interface EbookMapper {
      * 순례에 매이지 않는 전자책(중간본·회향본)이 이미 있는가.
      * QUEUED·BUILDING·READY 를 "있다" 로 본다 — FAILED 만 다시 큐에 넣을 수 있다.
      */
+    /** 같은 마일스톤의 전자일기장이 이미 있는가. 종류만 보면 6코스 책이 3코스 책과 같은 것이 된다. */
+    Optional<Ebook> findAliveByUserTypeAndMilestone(@Param("userId") Long userId,
+                                                    @Param("ebookType") String ebookType,
+                                                    @Param("milestone") Integer milestone);
+
     Optional<Ebook> findAliveByUserAndType(@Param("userId") Long userId,
                                            @Param("ebookType") String ebookType);
 

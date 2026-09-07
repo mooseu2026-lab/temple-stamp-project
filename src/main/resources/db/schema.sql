@@ -352,9 +352,10 @@ CREATE TABLE IF NOT EXISTS reward_policy (
     CONSTRAINT uk_reward_policy_code UNIQUE (code),
     INDEX idx_reward_policy_trigger (trigger_type, is_active),
     CONSTRAINT chk_reward_policy_type CHECK
-        (reward_type IN ('STAMP','COUPON','PHYSICAL')),
+        -- DIGITAL 은 챕터 11 이 더했다. 전자일기장처럼 실물이 아닌 보상은 수령 신청을 받지 않는다.
+        (reward_type IN ('STAMP','COUPON','PHYSICAL','DIGITAL')),
     CONSTRAINT chk_reward_policy_trigger CHECK (trigger_type IN
-        ('STAMP_COMPLETED','COURSE_COMPLETED','THREE_COURSES_COMPLETED','ALL_COMPLETED'))
+        ('STAMP_COMPLETED','COURSE_COMPLETED','EVERY_THREE_COURSES','ALL_COMPLETED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
@@ -491,7 +492,7 @@ CREATE TABLE IF NOT EXISTS thinkbox (
     is_edited TINYINT(1) NOT NULL DEFAULT 0,        -- 원본에서 수정됐는지
     course_id BIGINT NULL,                          -- 관련 코스 (선택)
     site_id BIGINT NULL,                            -- 관련 사찰 (선택)
-    is_private TINYINT(1) NOT NULL DEFAULT 0,       -- 비공개. 전자책에 싣지 않음
+    is_private TINYINT(1) NOT NULL DEFAULT 0,       -- 비공개(공개 화면에서 감춤). 전자책에는 실린다 — 개인 소장본(챕터 9)
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT uk_thinkbox_stamp UNIQUE (stamp_id),
@@ -516,7 +517,7 @@ CREATE TABLE IF NOT EXISTS photo (
     site_id BIGINT NOT NULL,                        -- 대상 사찰
     file_key VARCHAR(500) NOT NULL,                 -- 저장소 파일 키
     has_other_face TINYINT(1) NOT NULL DEFAULT 0,   -- 타인 얼굴 포함 (업로드 시 자기 신고)
-    is_private TINYINT(1) NOT NULL DEFAULT 0,       -- 비공개. 전자책 제외
+    is_private TINYINT(1) NOT NULL DEFAULT 0,       -- 비공개(공개 화면에서 감춤). 전자책에는 실린다 — 개인 소장본(챕터 9)
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT uk_photo_user_site UNIQUE (user_id, site_id),
@@ -553,6 +554,12 @@ CREATE TABLE IF NOT EXISTS user_reward (
     reward_policy_id BIGINT NOT NULL,               -- 어떤 규칙으로 받았는지
     stamp_id BIGINT NULL,                           -- 스탬프 단위 보상의 근거
     pilgrimage_id BIGINT NULL,                      -- 코스 단위 보상의 근거
+    milestone SMALLINT NULL,                        -- 3·6·9·12 — 같은 정책으로 여러 번 받는 유일한 보상(전자일기장)
+    -- 사용자 단위 보상의 유니크 키. MySQL 유니크는 NULL 을 서로 다른 값으로 보므로
+    -- pilgrimage_id 를 비우는 것만으로는 중복이 막히지 않는다(챕터 8 함정 1 과 같은 자리).
+    user_key BIGINT GENERATED ALWAYS AS (
+        CASE WHEN stamp_id IS NULL AND pilgrimage_id IS NULL THEN user_id END) STORED,
+    milestone_key SMALLINT GENERATED ALWAYS AS (IFNULL(milestone, 0)) STORED,
     status VARCHAR(20) NOT NULL DEFAULT 'GRANTED',  -- GRANTED→CLAIMED→PAID/REJECTED, 의심 시 UNDER_REVIEW
     needs_review TINYINT(1) NOT NULL DEFAULT 0,     -- 완주가 취소됐는데 이미 움직인 보상. 사람이 봐야 한다(챕터 7 §2-4)
     audit_score DECIMAL(6,2) NULL,                  -- 부정 의심 자동 점수. 초기엔 기록만 하고 전부 통과
@@ -564,6 +571,8 @@ CREATE TABLE IF NOT EXISTS user_reward (
     tracking_no VARCHAR(100) NULL,                  -- 송장 문자열. 발송을 별도 상태로 두지 않고 PAID 전이 때 함께 받는다
     CONSTRAINT uk_user_reward_stamp UNIQUE (reward_policy_id, stamp_id),
     CONSTRAINT uk_user_reward_pilgrimage UNIQUE (reward_policy_id, pilgrimage_id),
+    -- "이 사람의 누적" 에 주는 보상은 코스가 아니라 사람으로 묶인다(리뷰 2-2).
+    CONSTRAINT uk_user_reward_user UNIQUE (reward_policy_id, user_key, milestone_key),
     INDEX idx_user_reward_user (user_id, status),
     INDEX idx_user_reward_review (status, claimed_at),
     CONSTRAINT fk_user_reward_user_id FOREIGN KEY (user_id)
@@ -645,6 +654,10 @@ CREATE TABLE IF NOT EXISTS ebook (
     pilgrimage_id BIGINT NULL,                      -- 코스 완주본일 때 근거
     ebook_type VARCHAR(20) NOT NULL,                -- PILGRIMAGE/INTERIM/HOEHYANG/PERSONAL(개인 소장본·챕터 9)
     snapshot_hash CHAR(64) NULL,                    -- 재료 정렬 → SHA-256. 같으면 같은 책(챕터 9 §2-1)
+    milestone SMALLINT NULL,                        -- 전자일기장(INTERIM)의 3·6·9·12. 그 밖의 종류는 NULL
+    -- ★ 전자일기장에만 값이 있다. 다른 종류는 NULL 이고, MySQL 유니크는 NULL 을 서로 다른 값으로 보므로
+    --   제약 자체가 걸리지 않는다. IFNULL 로 0을 채우면 개인 소장본이 사용자당 한 권으로 묶여 버린다.
+    milestone_key SMALLINT GENERATED ALWAYS AS (CASE WHEN ebook_type = 'INTERIM' THEN IFNULL(milestone, 0) END) STORED,
     status VARCHAR(20) NOT NULL DEFAULT 'REQUESTED',-- REQUESTED→READY/FAILED
     pdf_key VARCHAR(500) NULL,                      -- 완성된 PDF 저장소 키
     epub_key VARCHAR(500) NULL,                     -- 완성된 EPUB 저장소 키
@@ -660,6 +673,8 @@ CREATE TABLE IF NOT EXISTS ebook (
     CONSTRAINT uk_ebook_pilgrimage_type UNIQUE (pilgrimage_id, ebook_type),
     -- 해시가 NULL 인 옛 방식(완주가 넣는 코스본)은 이 제약에 걸리지 않는다 — NULL 은 유니크에서 서로 다르다
     CONSTRAINT uk_ebook_user_snapshot UNIQUE (user_id, snapshot_hash),
+    -- 전자일기장은 3·6·9·12 마다 한 권이다. 마일스톤이 키에 없으면 6코스 책이 3코스 책과 부딪혀 사라진다.
+    CONSTRAINT uk_ebook_user_milestone UNIQUE (user_id, ebook_type, milestone_key),
     INDEX idx_ebook_worker (status, queued_at),
     INDEX idx_ebook_user (user_id, ebook_type),
     CONSTRAINT fk_ebook_user_id FOREIGN KEY (user_id)
@@ -777,5 +792,7 @@ CREATE TABLE IF NOT EXISTS slot_site (
     INDEX idx_slot_site_site (site_id),
     CONSTRAINT fk_slot_site_course_site_id FOREIGN KEY (course_site_id) REFERENCES course_site (course_site_id) ON DELETE RESTRICT,
     CONSTRAINT fk_slot_site_site_id        FOREIGN KEY (site_id)        REFERENCES site (site_id)               ON DELETE RESTRICT,
-    CONSTRAINT chk_slot_site_track CHECK (track IN ('MAIN','SUNROAD'))
+    CONSTRAINT chk_slot_site_track CHECK (track IN ('MAIN','SUNROAD')),
+    -- 한 사찰이 같은 트랙으로 두 자리에 들어가면 같은 절에서 도장을 두 번 받는 길이 열린다(김해원 제안).
+    CONSTRAINT uk_slot_site_site UNIQUE (site_id, track)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

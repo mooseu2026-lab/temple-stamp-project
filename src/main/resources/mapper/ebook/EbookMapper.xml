@@ -4,7 +4,7 @@
 <mapper namespace="com.templestamp.ebook.EbookMapper">
 
     <sql id="columns">
-        ebook_id, user_id, pilgrimage_id, ebook_type, snapshot_hash, status, pdf_key, epub_key,
+        ebook_id, user_id, pilgrimage_id, ebook_type, snapshot_hash, milestone, status, pdf_key, epub_key,
         fail_reason, page_count, byte_size, retry_count, building_started_at, queued_at, built_at,
         created_at, updated_at
     </sql>
@@ -15,15 +15,30 @@
     -->
     <insert id="enqueue" parameterType="com.templestamp.ebook.Ebook"
             useGeneratedKeys="true" keyProperty="ebookId">
-        INSERT IGNORE INTO ebook (user_id, pilgrimage_id, ebook_type, status, queued_at)
-        VALUES (#{userId}, #{pilgrimageId}, #{ebookType}, 'REQUESTED', NOW())
+        INSERT IGNORE INTO ebook (user_id, pilgrimage_id, ebook_type, milestone, status, queued_at)
+        VALUES (#{userId}, #{pilgrimageId}, #{ebookType}, #{milestone}, 'REQUESTED', NOW())
     </insert>
 
     <select id="findById" resultType="com.templestamp.ebook.Ebook">
         SELECT <include refid="columns"/> FROM ebook WHERE ebook_id = #{ebookId}
     </select>
 
-    <!-- 중간본·회향본 중복 방지. FAILED 는 "없는 것" 으로 봐서 다시 큐에 넣을 수 있게 둔다. -->
+    <!--
+      같은 마일스톤의 전자일기장이 이미 있는지. 종류만 보면 6코스 책이 3코스 책과 같은 것이 되어
+      두 번째 마일스톤이 영원히 만들어지지 않는다.
+      REQUESTED·READY 만 산 것으로 본다 — FAILED 는 다시 시도해야 한다.
+    -->
+    <select id="findAliveByUserTypeAndMilestone" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/>
+        FROM ebook
+        WHERE user_id = #{userId}
+          AND ebook_type = #{ebookType}
+          AND IFNULL(milestone, 0) = IFNULL(#{milestone}, 0)
+          AND status IN ('REQUESTED', 'READY')
+        LIMIT 1
+    </select>
+
+    <!-- 회향본 중복 방지. FAILED 는 "없는 것" 으로 봐서 다시 큐에 넣을 수 있게 둔다. -->
     <select id="findAliveByUserAndType" resultType="com.templestamp.ebook.Ebook">
         SELECT <include refid="columns"/>
         FROM ebook
@@ -48,6 +63,7 @@
                c.course_id,
                c.name AS course_name,
                e.ebook_type,
+               e.milestone,
                e.status,
                e.pdf_key,
                e.epub_key,
@@ -167,7 +183,7 @@
 
     <select id="findRowById" resultType="com.templestamp.ebook.dto.EbookRow">
         SELECT e.ebook_id, e.user_id, e.pilgrimage_id, c.course_id, c.name AS course_name,
-               e.ebook_type, e.status, e.pdf_key, e.epub_key, e.fail_reason,
+               e.ebook_type, e.milestone, e.status, e.pdf_key, e.epub_key, e.fail_reason,
                e.page_count, e.byte_size, e.created_at
         FROM ebook e
                  LEFT JOIN pilgrimage p ON p.pilgrimage_id = e.pilgrimage_id

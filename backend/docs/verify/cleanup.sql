@@ -116,40 +116,40 @@ DELETE FROM users WHERE email LIKE 'deleted-%@invalid';
 DELETE FROM reward_claim
  WHERE user_reward_id IN (SELECT user_reward_id FROM user_reward
                            WHERE user_id IN (SELECT user_id FROM users
-                                              WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com')));
+                                              WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com')));
 
 DELETE FROM user_reward
- WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com'));
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com'));
 
 DELETE FROM certificate
- WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com'));
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com'));
 
 -- (계정별 ebook 삭제는 맨 위의 "챕터 9" 블록이 표째 비우는 것으로 대신한다.
 --  여기서 일부만 지우면 다른 계정의 인쇄 주문이 참조하는 행에서 FK 1451 로 멈춘다.)
 
 DELETE FROM thinkbox
- WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com'));
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com'));
 
 -- 사진은 users 를 RESTRICT 로 잡는다. 이 블록에 빠져 있어 사진을 올린 계정에서 멈췄다(챕터 9 실측).
 DELETE FROM photo
- WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com'));
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com'));
 
 DELETE FROM stamp
  WHERE pilgrimage_id IN (SELECT pilgrimage_id FROM pilgrimage
-                          WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com')));
+                          WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com')));
 
 DELETE FROM phrase_seen
- WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com'));
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com'));
 DELETE FROM task_seen
- WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com'));
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com'));
 
 DELETE FROM pilgrimage
- WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com'));
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com'));
 
 DELETE FROM user_agreement
- WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com'));
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com'));
 
-DELETE FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com');
+DELETE FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com' OR email LIKE 'sec-%@test.com' OR email LIKE 'wd-%@test.com' OR email LIKE 'n-%@test.com' OR email LIKE 'e-%@test.com' OR email LIKE 'y-%@test.com');
 
 -- W2 가 중간에 끊겨 코스가 ACTIVE 로 남았을 때를 대비한 원복(정상 실행이면 teardown 이 이미 했다).
 UPDATE course SET status = 'DRAFT' WHERE course_id BETWEEN 37 AND 48 AND status = 'ACTIVE';
