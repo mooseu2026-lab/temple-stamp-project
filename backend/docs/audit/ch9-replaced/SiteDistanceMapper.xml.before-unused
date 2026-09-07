@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.site.SiteDistanceMapper">
+
+    <select id="findMinMinutes" resultType="int">
+        SELECT min_minutes
+        FROM site_distance
+        WHERE site_a_id = #{siteAId} AND site_b_id = #{siteBId}
+    </select>
+
+    <select id="findFrom" resultType="com.templestamp.site.SiteDistance">
+        SELECT site_a_id, site_b_id, min_minutes
+        FROM site_distance
+        WHERE site_a_id = #{siteAId}
+        ORDER BY min_minutes
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO site_distance (site_a_id, site_b_id, min_minutes)
+        VALUES (#{siteAId}, #{siteBId}, #{minMinutes})
+        ON DUPLICATE KEY UPDATE min_minutes = VALUES(min_minutes)
+    </insert>
+
+</mapper>

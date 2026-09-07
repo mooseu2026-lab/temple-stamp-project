@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.user.StorageOrphanMapper">
+
+    <insert id="enqueue">
+        INSERT INTO storage_orphan (file_key, reason) VALUES (#{fileKey}, #{reason})
+    </insert>
+
+    <select id="countPending" resultType="int">
+        SELECT COUNT(*) FROM storage_orphan WHERE reason = #{reason} AND deleted_at IS NULL
+    </select>
+
+</mapper>

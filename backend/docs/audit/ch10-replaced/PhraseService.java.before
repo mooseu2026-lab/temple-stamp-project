@@ -1,0 +1,192 @@
+package com.templestamp.verse;
+
+import com.templestamp.admin.dto.MissionSaveRequest;
+import com.templestamp.admin.dto.PhraseSaveRequest;
+import com.templestamp.global.error.BusinessException;
+import com.templestamp.global.error.ErrorCode;
+import com.templestamp.global.type.Tier;
+import com.templestamp.verse.dto.VerseResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+/**
+ * 오관게·확장문구·미션을 사람에 맞춰 골라 주는 곳.
+ * <p>
+ * 규칙은 하나다: 이 코스에서 아직 안 본 것을 먼저 준다. 다섯 버전을 다 봤으면 가장 오래전에
+ * 본 것을 다시 준다. 완전히 막지 않는 이유는, 코스를 다시 도는 사람에게 화면이 비어 버리면
+ * 그게 더 나쁜 경험이기 때문이다.
+ * <p>
+ * 노출 이력은 (사용자, 코스) 단위다. 코스가 바뀌면 문구 풀이 다시 열린다.
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class PhraseService {
+
+    private final GwanVerseMapper verseMapper;
+    private final ExpansionPhraseMapper phraseMapper;
+    private final MissionMapper missionMapper;
+    private final PhraseSeenMapper phraseSeenMapper;
+    private final TaskSeenMapper taskSeenMapper;
+
+    /* ---------------- 오관게 ---------------- */
+
+    public List<VerseResponse> getVerses() {
+        return verseMapper.findAll().stream()
+                .map(v -> new VerseResponse(v.getVerseNo(), v.getHanja(), v.getTextKo(), v.getTheme()))
+                .toList();
+    }
+
+    public VerseResponse getVerse(Integer verseNo) {
+        GwanVerse verse = verseMapper.findByVerseNo(verseNo)
+                .orElseThrow(() -> new BusinessException(ErrorCode.VERSE_4040));
+        return new VerseResponse(verse.getVerseNo(), verse.getHanja(), verse.getTextKo(), verse.getTheme());
+    }
+
+    /* ---------------- 확장문구 ---------------- */
+
+    /**
+     * 확장문구 하나를 고른다. <b>노출 이력을 남기지 않는다.</b>
+     * 등록된 문구가 없으면 null — 호출부가 판단한다.
+     * <p>
+     * 예전에는 여기서 바로 markSeen 을 했는데, 이 메서드를 부르는 곳이 사찰 싱글페이지
+     * (도착 전 미리보기)라 화면을 새로고침할 때마다 문구 풀이 소진됐다. 도장을 찍기도 전에
+     * "본 것" 이 되어 버리는 셈이다. 그래서 고르는 일과 기록하는 일을 갈라 두었다.
+     * <p>
+     * 기록은 도장이 실제로 COMPLETED 로 넘어갈 때 {@link #markPhraseSeen} 으로 한다(챕터 5).
+     * 그때까지 phrase_seen 은 계속 0행이고, 같은 코스 안 반복 방지도 그때까지는 동작하지 않는다.
+     * 문구가 반복돼 보이는 것은 버그가 아니라 아직 붙이지 않은 기능이다.
+     */
+    @Transactional(readOnly = true)
+    public ExpansionPhrase pickPhrase(Long userId, Long courseId, Integer verseNo, Tier tier) {
+        Tier target = Tier.orDefault(tier);
+
+        if (userId == null || courseId == null) {
+            return phraseMapper.findUnseen(null, null, verseNo, target).orElse(null);
+        }
+
+        // 아직 안 본 것 우선(RAND), 다섯 버전을 다 봤으면 가장 오래전에 본 것.
+        return phraseMapper.findUnseen(userId, courseId, verseNo, target)
+                .or(() -> phraseMapper.findLeastRecentlySeen(userId, courseId, verseNo, target))
+                .orElse(null);
+    }
+
+    /**
+     * 그 문구를 실제로 읽은 것으로 기록한다. 챕터 5 의 도장 완료 처리에서 부른다.
+     * INSERT IGNORE 라 같은 조합이 두 번 들어와도 조용히 넘어간다.
+     * <p>
+     * 비로그인(userId null)은 남길 곳이 없으므로 아무 일도 하지 않는다.
+     */
+    @Transactional
+    public void markPhraseSeen(Long userId, Long courseId, Long expansionPhraseId) {
+        if (userId == null || courseId == null || expansionPhraseId == null) {
+            return;
+        }
+        phraseSeenMapper.markSeen(userId, courseId, expansionPhraseId);
+    }
+
+    /* ---------------- 미션 ---------------- */
+
+    /**
+     * 그 자리에서 낼 미션. 안 받아 본 것 우선. 뽑은 미션은 받은 것으로 기록한다.
+     * 미션 없이 도장을 끝낼 수 없으므로 여기서 못 찾으면 예외로 끊는다.
+     */
+    @Transactional
+    /**
+     * 클라이언트가 보낸 확장문구가 <b>이 구절·이 계층의 것인지</b> 서버가 확인한다.
+     * 아니면 {@code null} 을 돌려주고 기록만 건너뛴다 — 다짐 제출 자체를 실패시킬 이유가 아니다.
+     * 확인 없이 그대로 기록하면 사용자가 아무 번호나 보내 남의 계층 문구를 "읽었다" 로 만들 수 있다.
+     */
+    public Long validatePhraseFor(Long expansionPhraseId, Integer verseNo, Tier tier) {
+        if (expansionPhraseId == null) {
+            return null;
+        }
+        return phraseMapper.existsForVerseAndTier(expansionPhraseId, verseNo, tier.name()) ? expansionPhraseId : null;
+    }
+
+    /**
+     * 미션을 배정하고 <b>노출 이력(task_seen)까지 남긴다.</b> 클래스가 {@code readOnly = true} 라
+     * 여기서 되돌리지 않으면, 읽기 전용 트랜잭션에서 부르는 호출자가 하나만 생겨도
+     * {@code Connection is read-only} 로 500 이 된다.
+     */
+    @Transactional
+    public Mission pickMission(Long userId, Long courseId, Integer verseNo, Tier tier) {
+        Tier target = Tier.orDefault(tier);
+
+        Mission mission = missionMapper.findUnseen(userId, courseId, verseNo, target)
+                .or(() -> missionMapper.findAny(verseNo, target))
+                .orElseThrow(() -> new BusinessException(ErrorCode.VERSE_4041,
+                        "이 구절·대상에 등록된 미션이 없습니다. (구절 %d, 대상 %s)"
+                                .formatted(verseNo, target)));
+
+        taskSeenMapper.markSeen(userId, courseId, mission.getMissionId());
+        return mission;
+    }
+
+    /** 도장 검증 단계에서 쓰는 조회. 여기서는 노출 이력을 남기지 않는다. */
+    public Mission getMission(Long missionId) {
+        return missionMapper.findById(missionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.VERSE_4041));
+    }
+
+    /* ---------------- 관리자 등록 ---------------- */
+
+    /**
+     * (구절·대상·버전) 이 같으면 덮어쓴다. 원고 파일을 다시 밀어 넣어도 중복되지 않는다.
+     * versionNo 를 비우면 그 조합의 다음 빈 번호를 채번한다 — 편집자가 번호를 세지 않아도 되게.
+     */
+    @Transactional
+    public Long savePhrase(PhraseSaveRequest request) {
+        int versionNo = request.versionNo() != null
+                ? request.versionNo()
+                : phraseMapper.nextVersionNo(request.verseNo(), request.tier());
+
+        if (versionNo > 5) {
+            throw new BusinessException(ErrorCode.COMMON_4090,
+                    "이 구절·대상은 이미 5개 버전이 모두 등록돼 있습니다. 덮어쓸 버전을 지정해 주세요.");
+        }
+
+        ExpansionPhrase phrase = ExpansionPhrase.builder()
+                .verseNo(request.verseNo())
+                .tier(request.tier())
+                .versionNo(versionNo)
+                .textKo(request.textKo())
+                .reviewStatus(request.reviewStatus() != null
+                        ? request.reviewStatus() : ExpansionPhrase.DRAFT)
+                .build();
+        phraseMapper.upsert(phrase);
+        return phrase.getExpansionPhraseId();
+    }
+
+    @Transactional
+    public Long saveMission(MissionSaveRequest request) {
+        int variantNo = request.variantNo() != null
+                ? request.variantNo()
+                : missionMapper.nextVariantNo(request.verseNo(), request.tier());
+
+        Mission mission = Mission.builder()
+                .verseNo(request.verseNo())
+                .tier(request.tier())
+                .variantNo(variantNo)
+                .body(request.body())
+                .originRef(request.originRef())
+                .reviewStatus(request.reviewStatus() != null
+                        ? request.reviewStatus() : Mission.DRAFT)
+                .build();
+        missionMapper.upsert(mission);
+        return mission.getMissionId();
+    }
+
+    /* ---------------- 통계 ---------------- */
+
+    public int seenPhraseCount(Long userId) {
+        return phraseSeenMapper.countByUserId(userId);
+    }
+
+    public int totalPhraseCount() {
+        return phraseMapper.countAll();
+    }
+}

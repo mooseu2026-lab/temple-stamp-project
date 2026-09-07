@@ -1,0 +1,38 @@
+package com.templestamp.ebook;
+
+import com.templestamp.ebook.dto.DownloadUrlResponse;
+import com.templestamp.ebook.dto.EbookResponse;
+import com.templestamp.global.response.ApiResponse;
+import com.templestamp.global.response.ItemsResponse;
+import com.templestamp.global.security.AuthenticatedUser;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/ebooks")
+@RequiredArgsConstructor
+public class EbookController {
+
+    private final EbookService ebookService;
+
+    /** 내 전자책만 보인다. 전자책은 카탈로그가 아니라 사람별로 만들어지는 물건이다. */
+    @GetMapping
+    public ApiResponse<ItemsResponse<EbookResponse>> getMine(
+            @AuthenticationPrincipal AuthenticatedUser user) {
+        return ApiResponse.ok(ItemsResponse.of(ebookService.getMyEbooks(user.userId())));
+    }
+
+    /** 링크는 몇 분 뒤 만료된다. 퍼 나른 링크로는 열리지 않는다. */
+    @GetMapping("/{ebookId}/download-url")
+    public ApiResponse<DownloadUrlResponse> getDownloadUrl(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long ebookId,
+            @RequestParam(defaultValue = "PDF") String format) {
+        return ApiResponse.ok(ebookService.getDownloadUrl(user.userId(), ebookId, format));
+    }
+}

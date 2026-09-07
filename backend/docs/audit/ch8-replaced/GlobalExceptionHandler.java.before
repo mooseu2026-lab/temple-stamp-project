@@ -1,0 +1,155 @@
+package com.templestamp.global.error;
+
+import com.templestamp.global.response.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.validation.BindException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import java.util.List;
+
+/**
+ * 모든 예외를 ApiResponse.fail 한 가지 모양으로 변환한다.
+ * 예상한 예외는 WARN, 예상 못 한 예외만 ERROR 로 남긴다.
+ * <p>
+ * 검증 실패는 fields 배열에 필드별 사유를 담는다. 키 이름이 "fields" 여야
+ * 프론트의 폼 오류 표시가 동작한다.
+ */
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
+        ErrorCode code = e.getErrorCode();
+        log.warn("BusinessException: {} - {}", code.code(), e.getMessage());
+        // 필드 사유를 함께 던진 예외는 검증 실패와 같은 모양으로 내보낸다 —
+        // 프론트가 error.fields 하나만 보고 폼 오류를 표시할 수 있게.
+        ErrorResponse body = e.getFields() == null
+                ? ErrorResponse.of(code.code(), e.getMessage())
+                : ErrorResponse.ofValidation(code.code(), e.getMessage(), e.getFields());
+        return ResponseEntity.status(code.status()).body(ApiResponse.fail(body));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
+        List<ErrorResponse.FieldError> fields = e.getBindingResult().getFieldErrors().stream()
+                .map(fe -> new ErrorResponse.FieldError(fe.getField(), fe.getDefaultMessage()))
+                .toList();
+        return validationFailed(fields);
+    }
+
+    @ExceptionHandler(BindException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBind(BindException e) {
+        List<ErrorResponse.FieldError> fields = e.getBindingResult().getFieldErrors().stream()
+                .map(fe -> new ErrorResponse.FieldError(fe.getField(), fe.getDefaultMessage()))
+                .toList();
+        return validationFailed(fields);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraint(ConstraintViolationException e) {
+        List<ErrorResponse.FieldError> fields = e.getConstraintViolations().stream()
+                .map(v -> new ErrorResponse.FieldError(v.getPropertyPath().toString(), v.getMessage()))
+                .toList();
+        return validationFailed(fields);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadable(HttpMessageNotReadableException e) {
+        log.warn("본문 파싱 실패: {}", e.getMessage());
+        return status(ErrorCode.COMMON_4004);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParam(MissingServletRequestParameterException e) {
+        return validationFailed(ErrorCode.COMMON_4002,
+                List.of(new ErrorResponse.FieldError(e.getParameterName(), "필수 파라미터입니다.")));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        return validationFailed(ErrorCode.COMMON_4003,
+                List.of(new ErrorResponse.FieldError(e.getName(), "값의 형식이 올바르지 않습니다.")));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        return status(ErrorCode.COMMON_4050);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMediaType(HttpMediaTypeNotSupportedException e) {
+        return status(ErrorCode.COMMON_4150);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUploadSize(MaxUploadSizeExceededException e) {
+        return status(ErrorCode.COMMON_4130);
+    }
+
+    /**
+     * 없는 경로. 두 예외를 함께 받는다 —
+     * 정적 리소스 쪽은 NoResourceFoundException, 매핑된 핸들러가 없는 쪽은
+     * NoHandlerFoundException 이다(spring.mvc.throw-exception-if-no-handler-found: true).
+     * 하나만 잡으면 나머지 한쪽이 handleUnexpected 로 떨어져 404 여야 할 응답이 500 으로 나간다.
+     */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<ApiResponse<Void>> handleNotFound(Exception e) {
+        return status(ErrorCode.COMMON_4040);
+    }
+
+    /**
+     * 유니크 제약 위반. 서비스가 미리 검사해도 동시 요청 두 건이 같은 값을 넣는 순간은 막지 못하니
+     * 마지막 그물로 둔다(예: 같은 이메일로 가입 요청이 동시에 두 번).
+     * <p>
+     * 상위 DataIntegrityViolationException 까지 잡지 않는 것은 의도적이다 — NOT NULL·FK 위반은
+     * 서버 잘못이라 409 로 감싸면 클라이언트가 재시도해도 소용없는 오류를 재시도하게 된다.
+     */
+    @ExceptionHandler(DuplicateKeyException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateKey(DuplicateKeyException e) {
+        log.warn("유니크 제약 위반: {}", e.getMostSpecificCause().getMessage());
+        return status(ErrorCode.COMMON_4090);
+    }
+
+    /** 메서드 시큐리티에서 올라온 403. 필터 단계 403 은 JsonAccessDeniedHandler 가 처리한다. */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException e) {
+        return status(ErrorCode.AUTH_4032);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception e) {
+        log.error("처리되지 않은 예외", e);
+        return status(ErrorCode.COMMON_5000);
+    }
+
+    private ResponseEntity<ApiResponse<Void>> status(ErrorCode code) {
+        return ResponseEntity.status(code.status())
+                .body(ApiResponse.fail(ErrorResponse.of(code.code(), code.message())));
+    }
+
+    private ResponseEntity<ApiResponse<Void>> validationFailed(List<ErrorResponse.FieldError> fields) {
+        return validationFailed(ErrorCode.COMMON_4000, fields);
+    }
+
+    private ResponseEntity<ApiResponse<Void>> validationFailed(ErrorCode code,
+                                                               List<ErrorResponse.FieldError> fields) {
+        return ResponseEntity.status(code.status())
+                .body(ApiResponse.fail(
+                        ErrorResponse.ofValidation(code.code(), code.message(), fields)));
+    }
+}

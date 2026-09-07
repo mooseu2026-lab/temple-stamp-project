@@ -1,0 +1,22 @@
+package com.templestamp.auth;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.Optional;
+
+@Mapper
+public interface RefreshTokenMapper {
+
+    int save(RefreshToken refreshToken);
+
+    Optional<RefreshToken> findByTokenHash(@Param("tokenHash") String tokenHash);
+
+    int revoke(@Param("tokenHash") String tokenHash);
+
+    /** 로그아웃 / 토큰 재사용 감지 시 그 사용자의 세션을 전부 끊는다. */
+    int revokeAllByUser(@Param("userId") Long userId);
+
+    /** 만료된 행 정리. 스케줄러가 하루 한 번 호출한다. */
+    int deleteExpired();
+}

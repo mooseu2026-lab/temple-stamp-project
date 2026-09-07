@@ -1,0 +1,29 @@
+package com.templestamp.ebook.dto;
+
+import java.time.LocalDateTime;
+
+/**
+ * 인쇄 주문 목록 한 건(챕터 9 §4).
+ * <p>
+ * <b>배송정보가 없다.</b> 주소는 {@code print_order_address} 에 따로 있고 목록 질의는 그 표를 읽지 않는다 —
+ * 응답에서 지우는 것이 아니라 <b>애초에 가져오지 않는다</b>. 지우는 방식은 필드를 하나 더할 때
+ * 다시 지우는 것을 잊으면 그대로 새어 나간다(보상 목록과 같은 원칙 · 보안 S16).
+ * [사용 위치] PrintOrderService → Controller
+ */
+public record PrintOrderResponse(
+        Long printOrderId,
+        Long ebookId,
+        String ebookType,
+        Integer quantity,
+        String status,
+        String trackingNo,            // SHIPPED 전이면 null
+        String cancelReason,          // 취소가 아니면 null
+        LocalDateTime requestedAt,
+        LocalDateTime updatedAt
+) {
+    public static PrintOrderResponse from(PrintOrderRow row) {
+        return new PrintOrderResponse(row.getPrintOrderId(), row.getEbookId(), row.getEbookType(),
+                row.getQuantity(), row.getStatus(), row.getTrackingNo(), row.getCancelReason(),
+                row.getRequestedAt(), row.getUpdatedAt());
+    }
+}

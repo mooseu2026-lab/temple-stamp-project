@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.user.StorageOrphanMapper">
+
+    <insert id="enqueue">
+        INSERT INTO storage_orphan (file_key, reason) VALUES (#{fileKey}, #{reason})
+    </insert>
+
+    <select id="countPending" resultType="int">
+        SELECT COUNT(*) FROM storage_orphan WHERE reason = #{reason} AND deleted_at IS NULL
+    </select>
+
+
+    <!-- ==================== 챕터 9 청소기 ==================== -->
+
+    <!--
+      오래된 것부터 집는다. FAILED 는 빼놓는다 — 다섯 번을 실패한 키를 5분마다 다시 집으면
+      큐가 영원히 비지 않고, 로그가 같은 오류로 뒤덮인다. 그건 사람이 볼 몫이다.
+    -->
+    <select id="findPending" resultType="com.templestamp.user.dto.StorageOrphanRow">
+        SELECT storage_orphan_id AS storageOrphanId,
+               file_key          AS fileKey,
+               reason            AS reason,
+               retry_count       AS retryCount
+          FROM storage_orphan
+         WHERE status = 'PENDING' AND deleted_at IS NULL
+         ORDER BY enqueued_at, storage_orphan_id
+         LIMIT #{limit}
+    </select>
+
+    <update id="markDeleted">
+        UPDATE storage_orphan
+        SET status = 'DELETED', deleted_at = NOW()
+        WHERE storage_orphan_id = #{id}
+    </update>
+
+    <!-- 상한을 넘기는 순간 FAILED 로 접고 사람에게 넘긴다. 한 문장으로 끝내 경합을 만들지 않는다. -->
+    <update id="markRetry">
+        UPDATE storage_orphan
+        SET retry_count  = retry_count + 1,
+            last_error   = #{lastError},
+            status       = CASE WHEN retry_count + 1 &gt; #{maxRetry} THEN 'FAILED' ELSE 'PENDING' END,
+            needs_review = CASE WHEN retry_count + 1 &gt; #{maxRetry} THEN 1 ELSE 0 END
+        WHERE storage_orphan_id = #{id}
+    </update>
+
+</mapper>

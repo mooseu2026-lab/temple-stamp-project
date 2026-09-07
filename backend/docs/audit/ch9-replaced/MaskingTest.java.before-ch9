@@ -1,0 +1,55 @@
+package com.templestamp.ebook;
+
+import com.templestamp.certificate.dto.CertificateVerifyResponse;
+import com.templestamp.ebook.dto.PrintOrderResponse;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * 마스킹은 한 번 잘못 나가면 되돌릴 수 없는 종류의 버그라 값별로 못 박아 둔다.
+ */
+class MaskingTest {
+
+    @Nested
+    @DisplayName("인쇄 신청(사용자용)")
+    class PrintOrder {
+
+        @Test
+        @DisplayName("연락처는 가운데 네 자리를 가린다 — 하이픈 유무와 무관")
+        void phone() {
+            assertThat(PrintOrderResponse.maskPhone("010-1234-5678")).isEqualTo("010-****-5678");
+            assertThat(PrintOrderResponse.maskPhone("01012345678")).isEqualTo("010-****-5678");
+            assertThat(PrintOrderResponse.maskPhone(null)).isEqualTo("*");
+            assertThat(PrintOrderResponse.maskPhone("0101")).isEqualTo("*");
+        }
+
+        @Test
+        @DisplayName("주소는 앞 두 어절만 남긴다")
+        void address() {
+            assertThat(PrintOrderResponse.maskAddress("서울특별시 종로구 우정국로 55 3층"))
+                    .isEqualTo("서울특별시 종로구 ***");
+            assertThat(PrintOrderResponse.maskAddress("제주 한림읍"))
+                    .isEqualTo("제주 ***");
+            assertThat(PrintOrderResponse.maskAddress(null)).isEqualTo("*");
+        }
+    }
+
+    @Nested
+    @DisplayName("인증서 공개 검증")
+    class Certificate {
+
+        @Test
+        @DisplayName("별표는 닉네임 길이와 무관하게 항상 1개다 — 길이가 새어 나가지 않게")
+        void nickname() {
+            assertThat(CertificateVerifyResponse.maskNickname("순례자")).isEqualTo("순*자");
+            assertThat(CertificateVerifyResponse.maskNickname("아주긴닉네임입니다")).isEqualTo("아*다");
+            assertThat(CertificateVerifyResponse.maskNickname("민수")).isEqualTo("민*");
+            assertThat(CertificateVerifyResponse.maskNickname("김")).isEqualTo("*");
+            assertThat(CertificateVerifyResponse.maskNickname("")).isEqualTo("*");
+            assertThat(CertificateVerifyResponse.maskNickname(null)).isEqualTo("*");
+        }
+    }
+}

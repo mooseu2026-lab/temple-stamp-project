@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.course.CourseSiteMapper">
+
+    <!--
+      사찰 이름은 요청 언어의 site_i18n 을 먼저 보고, 없으면 ko, 그것도 없으면 site.name 을 쓴다.
+      COALESCE 를 쓰는 이유 — 번역이 비어 있다고 목록에 빈칸이 뜨면 그게 더 나쁘다.
+    -->
+    <sql id="rowSelect">
+        SELECT cs.course_site_id,
+               cs.course_id,
+               cs.site_id,
+               cs.position,
+               cs.verse_no,
+               COALESCE(i18n.name, ko.name, s.name) AS site_name,
+               s.status                             AS site_status,
+               s.latitude,
+               s.longitude,
+               s.verify_radius,
+               s.qr_version,
+               s.qr_location_hint
+        FROM course_site cs
+                 JOIN site s ON s.site_id = cs.site_id
+                 LEFT JOIN site_i18n i18n ON i18n.site_id = s.site_id AND i18n.locale = #{locale}
+                 LEFT JOIN site_i18n ko ON ko.site_id = s.site_id AND ko.locale = 'ko'
+    </sql>
+
+    <select id="findByCourseId" resultType="com.templestamp.course.dto.CourseSiteRow">
+        <include refid="rowSelect"/>
+        WHERE cs.course_id = #{courseId}
+        ORDER BY cs.position
+    </select>
+
+    <!-- course_site.site_id 에 UNIQUE 가 걸려 있어 결과는 0 또는 1건이다. -->
+    <select id="findBySiteId" resultType="com.templestamp.course.dto.CourseSiteRow">
+        SELECT cs.course_site_id,
+               cs.course_id,
+               cs.site_id,
+               cs.position,
+               cs.verse_no,
+               COALESCE(ko.name, s.name) AS site_name,
+               s.status                  AS site_status,
+               s.latitude,
+               s.longitude,
+               s.verify_radius,
+               s.qr_version,
+               s.qr_location_hint
+        FROM course_site cs
+                 JOIN site s ON s.site_id = cs.site_id
+                 LEFT JOIN site_i18n ko ON ko.site_id = s.site_id AND ko.locale = 'ko'
+        WHERE cs.site_id = #{siteId}
+    </select>
+
+    <select id="findRowById" resultType="com.templestamp.course.dto.CourseSiteRow">
+        SELECT cs.course_site_id,
+               cs.course_id,
+               cs.site_id,
+               cs.position,
+               cs.verse_no,
+               COALESCE(ko.name, s.name) AS site_name,
+               s.status                  AS site_status,
+               s.latitude,
+               s.longitude,
+               s.verify_radius,
+               s.qr_version,
+               s.qr_location_hint
+        FROM course_site cs
+                 JOIN site s ON s.site_id = cs.site_id
+                 LEFT JOIN site_i18n ko ON ko.site_id = s.site_id AND ko.locale = 'ko'
+        WHERE cs.course_site_id = #{courseSiteId}
+    </select>
+
+    <select id="countByCourseId" resultType="int">
+        SELECT COUNT(*) FROM course_site WHERE course_id = #{courseId}
+    </select>
+
+    <select id="countActiveSites" resultType="int">
+        SELECT COUNT(*)
+        FROM course_site cs
+                 JOIN course c ON c.course_id = cs.course_id
+        WHERE c.status = 'ACTIVE'
+    </select>
+
+    <delete id="deleteByCourseId">
+        DELETE FROM course_site WHERE course_id = #{courseId}
+    </delete>
+
+    <insert id="insertAll">
+        INSERT INTO course_site (course_id, site_id, position, verse_no)
+        VALUES
+        <foreach collection="slots" item="slot" separator=",">
+            (#{slot.courseId}, #{slot.siteId}, #{slot.position}, #{slot.verseNo})
+        </foreach>
+    </insert>
+
+
+    <select id="findCourseIdBySite" resultType="long">
+        SELECT course_id FROM course_site WHERE site_id = #{siteId}
+    </select>
+
+    <select id="countInactiveSites" resultType="int">
+        SELECT COUNT(*)
+        FROM course_site cs
+        JOIN site s ON s.site_id = cs.site_id
+        WHERE cs.course_id = #{courseId} AND s.status &lt;&gt; 'ACTIVE'
+    </select>
+
+
+    <select id="findSlotIdsByCourse" resultType="map">
+        SELECT position, course_site_id AS courseSiteId FROM course_site WHERE course_id = #{courseId}
+    </select>
+
+</mapper>

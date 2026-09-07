@@ -1,0 +1,112 @@
+-- backend/docs/verify/alter-ch9.sql — 챕터 9(전자책·인증서 PDF·인쇄주문·청소기) 스키마 변경
+--
+--   mysql -uroot -p temple_stamp_project < backend/docs/verify/alter-ch9.sql
+--
+-- schema.sql 은 CREATE TABLE IF NOT EXISTS 라 이미 있는 표에 컬럼을 더하지 않는다.
+-- 이미 만들어진 DB(로컬·운영)에는 이 파일을 손으로 한 번 돌려야 한다. 운영 목록은 정리.md §5-1.
+--
+-- ★ 이 챕터의 세 표(ebook·print_order·storage_orphan)는 전부 0행이다.
+--   그래서 컬럼을 지우고 CHECK 를 좁히는 것이 안전하다 — 옮길 데이터가 없다.
+--   행이 있는 표였다면 옛 값을 CHECK 에 남겨 두고 UPDATE 로 옮겼을 것이다.
+-- USE 를 두지 않는다. 부르는 쪽이 스키마를 정한다:
+--   mysql -u<user> -p <스키마> < 이 파일
+-- 파일 안에 USE 가 있으면 운영 스키마에 올리려고 불러도 조용히 개발 DB 로 간다(최종 점검 F).
+
+-- ⑮ ebook — 개인 소장본으로 성격이 바뀐다(챕터 9 §2)
+--    옛 설계: 완주가 만들어 주는 코스본·중간본·회향본. 대기열 상태가 QUEUED→BUILDING→READY/FAILED.
+--    새 설계: 사용자가 직접 요청하는 개인 소장본. 재료의 스냅샷 해시가 같으면 같은 책이다.
+--
+--    BUILDING 을 없앤 이유: "있는 행을 FOR UPDATE 로 잠그고 그 트랜잭션 안에서 만든다" 로 바꾸면
+--    중간 상태가 필요 없다. 중간 상태는 좀비 작업(BUILDING 인 채 죽은 행)을 만들고,
+--    그것을 회수하는 코드가 또 필요해진다.
+ALTER TABLE ebook
+    ADD COLUMN snapshot_hash CHAR(64) NULL AFTER ebook_type,     -- 재료 정렬 → SHA-256. 같으면 같은 책
+    ADD COLUMN page_count INT NULL AFTER fail_reason,            -- READY 일 때만
+    ADD COLUMN byte_size BIGINT NULL AFTER page_count;
+
+-- (user_id, snapshot_hash) 유니크. NULL 은 유니크에서 서로 다르게 취급되므로
+-- 해시가 없는 옛 방식(완주가 넣는 코스본)은 이 제약에 걸리지 않는다 — 두 방식이 공존한다.
+ALTER TABLE ebook
+    ADD CONSTRAINT uk_ebook_user_snapshot UNIQUE (user_id, snapshot_hash);
+
+ALTER TABLE ebook DROP CHECK chk_ebook_type;
+ALTER TABLE ebook ADD CONSTRAINT chk_ebook_type
+    CHECK (ebook_type IN ('PILGRIMAGE','INTERIM','HOEHYANG','PERSONAL'));
+
+ALTER TABLE ebook DROP CHECK chk_ebook_status;
+ALTER TABLE ebook ADD CONSTRAINT chk_ebook_status
+    CHECK (status IN ('REQUESTED','READY','FAILED'));
+ALTER TABLE ebook ALTER COLUMN status SET DEFAULT 'REQUESTED';
+
+-- ⑯ print_order — 상태 두 개 추가 · 배송정보 분리 · 수량 상한 5(챕터 9 §4)
+--    상태 이름은 저장소 것을 그대로 둔다(REQUESTED·CONFIRMED·SHIPPED·CANCELED).
+--    없던 PRINTING·DONE 만 더한다.
+ALTER TABLE print_order DROP CHECK chk_print_order_status;
+ALTER TABLE print_order ADD CONSTRAINT chk_print_order_status
+    CHECK (status IN ('REQUESTED','CONFIRMED','PRINTING','SHIPPED','DONE','CANCELED'));
+
+ALTER TABLE print_order DROP CHECK chk_print_order_qty;
+ALTER TABLE print_order ADD CONSTRAINT chk_print_order_qty
+    CHECK (quantity BETWEEN 1 AND 5);
+
+ALTER TABLE print_order
+    ADD COLUMN cancel_reason VARCHAR(200) NULL AFTER tracking_no,   -- 관리자 취소는 사유 필수
+    ADD COLUMN needs_review TINYINT(1) NOT NULL DEFAULT 0 AFTER cancel_reason;
+    -- needs_review: 탈퇴했는데 이미 실물이 움직이는 주문. 사람이 봐야 한다(보상 §4-5 와 같은 원칙)
+
+-- 배송정보를 본체에서 떼어낸다. 목록 API 가 print_order 만 읽으므로,
+-- 같은 표에 두면 목록을 부를 때마다 주소가 함께 나갈 길이 열린다(reward_claim 과 같은 이유).
+ALTER TABLE print_order
+    DROP COLUMN recipient_name,
+    DROP COLUMN recipient_phone,
+    DROP COLUMN postal_code,
+    DROP COLUMN address,
+    DROP COLUMN address_detail;
+
+CREATE TABLE IF NOT EXISTS print_order_address (
+    print_order_id BIGINT PRIMARY KEY,               -- 1:1. 주문 한 건에 배송지 한 벌
+    recipient VARCHAR(50) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    postal_code VARCHAR(10) NULL,
+    address VARCHAR(200) NOT NULL,
+    memo VARCHAR(200) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_print_order_address_order FOREIGN KEY (print_order_id)
+        REFERENCES print_order (print_order_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ⑰ storage_orphan — 청소기가 소비하는 큐가 된다(챕터 9 §5 ①)
+--    표만 있고 소비자가 없던 자리다. 재시도 횟수와 실패 표시가 있어야
+--    "못 지우는 키" 가 조용히 영원히 돌지 않는다.
+ALTER TABLE storage_orphan
+    ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'PENDING' AFTER reason,
+    ADD COLUMN retry_count INT NOT NULL DEFAULT 0 AFTER status,
+    ADD COLUMN needs_review TINYINT(1) NOT NULL DEFAULT 0 AFTER retry_count,
+    ADD COLUMN last_error VARCHAR(200) NULL AFTER needs_review;
+
+ALTER TABLE storage_orphan
+    ADD CONSTRAINT chk_storage_orphan_status CHECK (status IN ('PENDING','DELETED','FAILED'));
+
+-- ⑰-b 청소기가 큐를 뒤지는 색인. 뒤지는 조건이 deleted_at 에서 status 로 바뀌었으니 색인도 바뀌어야 한다.
+--     이 두 줄이 빠져 있었다 — schema.sql 로 새로 만든 DB 와 ALTER 로 올린 DB 가 갈라졌고,
+--     운영은 ALTER 로 올리므로 운영만 옛 색인을 갖게 된다(최종 점검 F 결함 ①).
+--     색인이 deleted_at 부터 시작하면 status = PENDING 으로 뒤질 때 하는 일이 없다.
+ALTER TABLE storage_orphan DROP INDEX idx_storage_orphan_pending;
+ALTER TABLE storage_orphan ADD INDEX idx_storage_orphan_pending (status, enqueued_at);
+
+-- 확인
+SELECT '⑮ ebook' AS step;
+SHOW COLUMNS FROM ebook LIKE 'snapshot_hash';
+SHOW COLUMNS FROM ebook LIKE 'page_count';
+SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS
+ WHERE CONSTRAINT_SCHEMA = 'temple_stamp_project' AND CONSTRAINT_NAME = 'chk_ebook_status';
+SELECT '⑯ print_order' AS step;
+SHOW COLUMNS FROM print_order LIKE 'needs_review';
+SHOW TABLES LIKE 'print_order_address';
+SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS
+ WHERE CONSTRAINT_SCHEMA = 'temple_stamp_project' AND CONSTRAINT_NAME = 'chk_print_order_status';
+SELECT '⑰ storage_orphan' AS step;
+SHOW COLUMNS FROM storage_orphan LIKE 'retry_count';
+-- Seq_in_index 1 이 status 여야 한다. deleted_at 이면 ⑰-b 를 돌리지 않은 것이다.
+SHOW INDEX FROM storage_orphan WHERE Key_name = 'idx_storage_orphan_pending';

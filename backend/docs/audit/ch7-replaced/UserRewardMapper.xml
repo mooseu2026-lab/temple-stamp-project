@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.reward.UserRewardMapper">
+
+    <sql id="columns">
+        user_reward_id, user_id, reward_policy_id, stamp_id, pilgrimage_id, status,
+        audit_score, audit_detail, granted_at, claimed_at, resolved_at, resolved_by
+    </sql>
+
+    <!-- RewardRow 는 rewardName·earnedAt 이라는 이름을 쓴다. 별칭으로 맞춰 준다. -->
+    <sql id="rowSelect">
+        SELECT ur.user_reward_id,
+               ur.user_id,
+               u.nickname,
+               ur.reward_policy_id,
+               rp.name       AS reward_name,
+               rp.reward_type,
+               ur.status,
+               ur.stamp_id,
+               ur.pilgrimage_id,
+               c.name        AS course_name,
+               ur.granted_at AS earned_at,
+               ur.claimed_at
+        FROM user_reward ur
+                 JOIN users u ON u.user_id = ur.user_id
+                 JOIN reward_policy rp ON rp.reward_policy_id = ur.reward_policy_id
+                 LEFT JOIN pilgrimage p ON p.pilgrimage_id = ur.pilgrimage_id
+                 LEFT JOIN course c ON c.course_id = p.course_id
+    </sql>
+
+    <!--
+      같은 근거로 이미 적립돼 있으면 조용히 넘어간다. (정책, 도장) 과 (정책, 순례) 에
+      UNIQUE 가 걸려 있어 완주 처리가 재시도돼도 보상이 두 번 쌓이지 않는다.
+      영향 행 수가 0 이면 "이미 있었다" 는 뜻이라 호출부가 그것으로 신규 여부를 판단한다.
+    -->
+    <insert id="grant" parameterType="com.templestamp.reward.UserReward"
+            useGeneratedKeys="true" keyProperty="userRewardId">
+        INSERT IGNORE INTO user_reward (user_id, reward_policy_id, stamp_id, pilgrimage_id,
+                                        status, granted_at)
+        VALUES (#{userId}, #{rewardPolicyId}, #{stampId}, #{pilgrimageId}, 'GRANTED', NOW())
+    </insert>
+
+    <select id="findById" resultType="com.templestamp.reward.UserReward">
+        SELECT <include refid="columns"/> FROM user_reward WHERE user_reward_id = #{userRewardId}
+    </select>
+
+    <select id="findRow" resultType="com.templestamp.reward.dto.RewardRow">
+        <include refid="rowSelect"/>
+        WHERE ur.reward_policy_id = #{rewardPolicyId}
+        <choose>
+            <when test="stampId != null">
+                AND ur.stamp_id = #{stampId}
+            </when>
+            <otherwise>
+                AND ur.pilgrimage_id = #{pilgrimageId}
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="findRowsByUserId" resultType="com.templestamp.reward.dto.RewardRow">
+        <include refid="rowSelect"/>
+        WHERE ur.user_id = #{userId}
+        ORDER BY ur.granted_at DESC
+    </select>
+
+    <!-- GRANTED 일 때만 바뀐다. 중복 청구를 SQL 단계에서 막는다. -->
+    <update id="claim">
+        UPDATE user_reward
+        SET status       = #{status},
+            audit_score  = #{auditScore},
+            audit_detail = #{auditDetail},
+            claimed_at   = NOW(),
+            resolved_at  = CASE WHEN #{status} = 'PAID' THEN NOW() ELSE NULL END
+        WHERE user_reward_id = #{userRewardId}
+          AND status = 'GRANTED'
+    </update>
+
+    <update id="resolve">
+        UPDATE user_reward
+        SET status      = #{status},
+            resolved_at = NOW(),
+            resolved_by = #{resolvedBy}
+        WHERE user_reward_id = #{userRewardId}
+          AND status = 'UNDER_REVIEW'
+    </update>
+
+    <select id="findUnderReview" resultType="com.templestamp.reward.dto.RewardRow">
+        <include refid="rowSelect"/>
+        WHERE ur.status = 'UNDER_REVIEW'
+        ORDER BY ur.claimed_at
+    </select>
+
+</mapper>

@@ -1,0 +1,201 @@
+const fs = require('fs'), path = require('path');
+function walk(d, out = []) {
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const p = path.join(d, e.name);
+    if (e.isDirectory()) walk(p, out); else if (e.name.endsWith('Controller.java')) out.push(p);
+  }
+  return out;
+}
+
+/* ── SecurityConfig 의 permitAll 목록을 읽는다 ── */
+const secRaw = fs.readFileSync('C:/temple-stamp-project/src/main/java/com/templestamp/global/config/SecurityConfig.java', 'utf8');
+/* ★ 주석을 먼저 지운다. 매처 목록 사이에 설명이 끼어 있고 그 안에 괄호가 있다("(→ 401)").
+   주석을 두고 괄호로 끊으면 목록 절반이 통째로 사라지는데, 결과가 "보호 경로" 로 나와서
+   아무도 이상하다고 느끼지 않는다 — 전체 점검 D 에서 실측으로 잡았다. */
+const sec = secRaw.replace(new RegExp("\\/\\*[\\s\\S]*?\\*\\/", 'g'), '').replace(new RegExp("\\/\\/.*$", 'gm'), '');
+const permitAny = [];   // 메서드 무관
+const permitGet = [];
+const permitOptions = [];   // preflight 전용. 여기에 "/**" 가 있는데 permitAny 로 섞으면 전부가 공개로 보인다
+for (const m of sec.matchAll(/\.requestMatchers\(([^)]*)\)\s*\.permitAll\(\)/gs)) {
+  const arg = m[1];
+  const paths = [...arg.matchAll(/"([^"]+)"/g)].map(x => x[1]);
+  const method = (arg.match(/HttpMethod\.(\w+)/) || [])[1];
+  if (method === 'GET') permitGet.push(...paths);
+  else if (method === 'OPTIONS') permitOptions.push(...paths);
+  else if (!method) permitAny.push(...paths);
+  else permitAny.push(...paths.map(x => method + ' ' + x));
+}
+const adminPrefix = /\.requestMatchers\("([^"]+)"\)\s*\.hasRole\("ADMIN"\)/.exec(sec);
+// 챕터 8 — 편집자 문. hasAnyRole 이라 위 정규식에 걸리지 않아 "로그인" 으로 잘못 세던 자리다.
+const editorPrefix = /\.requestMatchers\("([^"]+)"\)\s*\.hasAnyRole\("EDITOR"/.exec(sec);
+
+function matches(pattern, url) {
+  if (pattern.endsWith('/**')) return url.startsWith(pattern.slice(0, -3));
+  return pattern === url;
+}
+function access(method, url) {
+  if (adminPrefix && matches(adminPrefix[1], url)) return 'ROLE_ADMIN';
+  if (editorPrefix && matches(editorPrefix[1], url)) return 'ROLE_EDITOR';
+  if (permitAny.some(p => matches(p, url))) return 'permitAll';
+  if (method === 'GET' && permitGet.some(p => matches(p, url))) return 'permitAll(GET)';
+  return '로그인';
+}
+
+const rows = [];
+for (const f of walk('C:/temple-stamp-project/src/main/java').sort()) {
+  const s = fs.readFileSync(f, 'utf8');
+  const cls = path.basename(f, '.java');
+  const base = (s.match(/@RequestMapping\("([^"]+)"\)/) || [])[1] || '';
+  const validated = /@Validated/.test(s);
+  for (const m of s.matchAll(/@(Get|Post|Put|Patch|Delete)Mapping(?:\("([^"]*)"\))?/g)) {
+    const method = m[1].toUpperCase();
+    const url = base + (m[2] || '');
+    rows.push({ cls, method, url, access: access(method, url), validated });
+  }
+}
+rows.sort((a, b) => a.url.localeCompare(b.url) || a.method.localeCompare(b.method));
+
+/* ── 컬렉션에서 실제로 호출하는 (메서드, 경로 모양) 을 모은다 ── */
+// 컬렉션이 두 벌이다. 회향 시나리오는 준비 SQL 이 먼저 돌아야 해서 파일을 나눴다(챕터 7).
+// 한쪽만 읽으면 그쪽에 없는 요청이 "미검증" 으로 잘못 뜬다.
+const COLLECTIONS = [
+  'C:/temple-stamp-project/postman/temple-stamp-all.postman_collection.json',
+  'C:/temple-stamp-project/postman/w2-hoehyang.postman_collection.json',
+];
+// 회향 컬렉션은 폴더 없이 요청이 바로 들어 있다 — 폴더 하나로 감싸 같은 모양으로 맞춘다.
+const col = { item: COLLECTIONS.flatMap(f => {
+  const items = JSON.parse(fs.readFileSync(f, 'utf8')).item;
+  const folders = items.filter(i => Array.isArray(i.item));
+  const loose = items.filter(i => !Array.isArray(i.item));
+  return loose.length ? folders.concat([{ name: 'W2 회향', item: loose }]) : folders;
+}) };
+const called = [];
+for (const folder of col.item) {
+  for (const it of folder.item || []) {
+    const r = it.request; if (!r) continue;
+    // Postman 은 url 을 객체로도 문자열로도 적는다. 문자열 형태를 못 읽어
+    // 폴더 N 의 아홉 문이 통째로 '부르는 요청 없음' 으로 잘못 세어졌다(챕터 8).
+    const rawUrl = typeof r.url === 'string' ? r.url : (r.url && r.url.raw ? r.url.raw : '');
+    const raw = rawUrl.split('?')[0].replace('{{baseUrl}}', '');
+    called.push({ method: r.method, raw, folder: folder.name.split(' ')[0], name: it.name });
+  }
+}
+/**
+ * 경로를 조각으로 나눠 견준다. 컨트롤러의 {siteId} 자리에는 컬렉션의 {{cs1}} 이든 숫자든
+ * LOCATION_SERVICE 같은 문자열이든 무엇이 와도 된다 — 그 자리는 값이 들어가는 자리다.
+ */
+const seg = u => u.replace(/^\/|\/$/g, '').split('/');
+function samePath(controllerUrl, calledUrl) {
+  const a = seg(controllerUrl), b = seg(calledUrl);
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => x.startsWith('{') || b[i].startsWith('{{') || x === b[i]);
+}
+
+const missing = [];
+for (const r of rows) {
+  const hit = called.filter(c => c.method === r.method && samePath(r.url, c.raw));
+  r.covered = hit.length;
+  r.by = hit.slice(0, 3).map(h => h.folder + ':' + h.name.split(' ')[0]).join(' · ');
+  if (!hit.length) missing.push(r);
+}
+
+/* ── 판정 (전체 점검 D §3) ──────────────────────────────────
+   ✅ newman 요청이 하나 이상 있다 · ⚠ 코드는 있는데 부르는 요청이 없다
+   챕터 9(전자책·인쇄)는 아직 점검 대상이 아니라 "미검증(ch9)" 로 따로 센다. */
+const CH89 = [/^\/api\/ebooks/, /^\/api\/print-orders/, /^\/api\/admin\/ebooks/, /^\/api\/admin\/contents/];
+const isCh89 = url => CH89.some(re => re.test(url));
+const authLabel = access =>
+  access.startsWith('permitAll') ? '없음'
+    : access === 'ROLE_ADMIN' ? 'ADMIN'
+    : access === 'ROLE_EDITOR' ? 'EDITOR+ADMIN'
+    : 'USER';
+rows.forEach(r => {
+  r.verdict = r.covered ? '✅' : (isCh89(r.url) ? '⚠ 미검증(ch9)' : '⚠ 미검증');
+});
+const ok = rows.filter(r => r.verdict === '✅').length;
+const warnCh89 = rows.filter(r => r.verdict === '⚠ 미검증(ch9)').length;
+const warnOther = rows.filter(r => r.verdict === '⚠ 미검증').length;
+
+let md = '# 엔드포인트 전수 — 컨트롤러 스캔 ↔ 컬렉션 대조\n\n';
+md += '자동 생성: `node backend/docs/verify/endpoint-scan.js` (전체 점검 D · §3)\n';
+md += '컬렉션 두 벌(`temple-stamp-all`·`w2-hoehyang`)을 함께 읽는다.\n\n';
+md += '```\n엔드포인트 ' + rows.length + ' · ✅ ' + ok + ' · ⚠ ' + (warnCh89 + warnOther) +
+      '(그중 ch9 ' + warnCh89 + ') · ❌ 0\n```\n\n';
+md += 'ch9 를 뺀 ⚠ 가 **' + warnOther + '** 이다 — 챕터 9 몫(전자책·인쇄)만 남았다.\n';
+md += '접근 권한은 `SecurityConfig` 의 매처를 그대로 읽어 판정했다 — 손으로 적은 목록이 아니다.\n\n';
+md += '| # | 메서드 경로 | 인증 | newman 요청 id | 판정 |\n|---:|---|---|---|---|\n';
+rows.forEach((r, i) => {
+  md += `| ${i + 1} | ${r.method} \`${r.url}\` | ${authLabel(r.access)} | ${r.covered ? r.by : '—'} | ${r.verdict} |\n`;
+});
+
+/* ── 비로그인 허용 목록 (SecurityConfig 에서 뽑은 그대로) ── */
+md += '\n## 비로그인 허용 목록 (SecurityConfig)\n\n';
+md += '여기 있는 것만 토큰 없이 열려야 한다. 나머지는 전부 401 — 실측은 `security-check.sh` S13.\n\n';
+md += '| 매처 | 메서드 | 왜 열려 있나 |\n|---|---|---|\n';
+const WHY_OPEN = {
+  '/api/auth/**': '가입·로그인·재발급. 토큰을 얻는 문이라 열려 있어야 한다',
+  '/api/certificates/verify/**': '제3자 진위 확인. 인증서를 받은 사람이 아니라 그것을 보는 사람이 쓴다',
+  '/health': '헬스체크. 막으면 배포가 401 로 실패한다',
+  '/error': '스프링 기본 오류 경로',
+  '/api/regions': '조회는 누구나. 하위 경로가 생길 때 함께 열리지 않도록 정확히 일치시킨다',
+  '/api/courses/**': '조회는 누구나 — 앱을 깔기 전에도 코스를 볼 수 있어야 한다',
+  '/api/sites/**': '조회는 누구나. 쓰기는 GET 제한 밖이라 로그인이 필요하다',
+  '/api/verses/**': '게송은 공개 콘텐츠다',
+  '/api/meditations/**': '명상 목록·상세는 공개. 재생 기록(POST)은 로그인이 필요하다',
+  '/api/content/**': '예절 안내·i18n 사전. 로그인 전 화면에서도 쓴다',
+};
+permitAny.forEach(x => {
+  const [m, url] = x.includes(' ') ? x.split(' ') : ['ALL', x];
+  md += `| \`${url}\` | ${m} | ${WHY_OPEN[url] || ''} |\n`;
+});
+permitGet.forEach(url => { md += `| \`${url}\` | GET | ${WHY_OPEN[url] || ''} |\n`; });
+if (permitOptions.length) {
+  md += `| \`${permitOptions.join('`, `')}\` | OPTIONS | CORS preflight 전용. 여기에 \`/**\` 이 있는데 메서드를 무시하면 전 경로가 공개로 보인다 |\n`;
+}
+
+// DELETE 는 전부 204 · 본문 없음이다(감사 G 보강 · 정리.md §4-16).
+//   ★ 표의 행 모양은 건드리지 않는다 — open-endpoint-probe.js 가 그 모양으로 표를 읽는다.
+//   실제로 표 안에 굵은 글씨로 204 를 적었다가 프로브가 다섯 줄을 못 읽어 91 을 86 으로 셌다.
+//   그래서 표가 아니라 문단으로 적는다.
+md += '\n## 삭제의 응답\n\n';
+md += 'DELETE 다섯(탈퇴 · 인쇄 취소 · 생각상자 · 약관 철회 · 참배 요소)은 전부 **204 · 본문 없음**이다. ';
+md += '실패는 그대로 봉투가 실린다(404 · 409).\n';
+
+if (missing.length) {
+  md += '\n## 미검증 엔드포인트\n\n| 메서드 | 경로 | 인증 | 왜 |\n|---|---|---|---|\n';
+  // 왜 아직 안 부르는지 — 빈 칸으로 두면 다음 사람이 다시 조사해야 한다.
+  const WHY = {
+    'GET /api/print-orders/{printOrderId}': '인쇄 주문이 있어야 부를 수 있다 — 챕터 9 에서 검증',
+    'DELETE /api/print-orders/{printOrderId}': '취소 조건(상태 전이)이 챕터 9 범위 — 그때 검증',
+  };
+  missing.forEach(r => { md += `| ${r.method} | \`${r.url}\` | ${authLabel(r.access)} | ${WHY[r.method + " " + r.url] || ""} |\n`; });
+}
+fs.writeFileSync('C:/temple-stamp-project/backend/docs/audit/endpoints.md', md, 'utf8');
+console.log('엔드포인트 ' + rows.length + ' · ✅ ' + ok + ' · ⚠ ' + (warnCh89 + warnOther) + '(그중 ch9 ' + warnCh89 + ') · ❌ 0');
+missing.forEach(r => console.log('  ✗ ' + r.method + ' ' + r.url + '  [' + r.access + ']'));
+console.log('@Validated 없는 컨트롤러:', [...new Set(rows.filter(r => !r.validated).map(r => r.cls))].join(', '));
+
+/* ── 기대 개수 단언 (전체 점검 E §7-1) ───────────────────────────────
+   지금까지 이 도구가 조용히 틀린 방식은 늘 "분모가 줄어드는" 쪽이었다 —
+   매처를 못 읽어 권한이 밀리거나, url 모양을 못 읽어 아홉 문이 통째로 빠지거나.
+   그런 때에도 출력 문장은 "⚠ 0" 으로 똑같이 나온다. 그래서 개수 자체를 못 박는다.
+   숫자를 바꿀 일이 생기면 expected-endpoints.txt 한 줄을 고치는 것이 유일한 길이다. */
+const EXPECTED_FILE = 'C:/temple-stamp-project/backend/docs/verify/expected-endpoints.txt';
+const expected = parseInt(fs.readFileSync(EXPECTED_FILE, 'utf8').trim(), 10);
+
+// 방금 쓴 endpoints.md 를 되읽어 요약 줄과 표 행 수까지 함께 본다.
+// 파일에 쓰는 코드가 틀리면 화면 숫자만 맞고 문서는 다를 수 있다.
+const written = fs.readFileSync('C:/temple-stamp-project/backend/docs/audit/endpoints.md', 'utf8');
+const summary = parseInt((written.match(/엔드포인트 (\d+) /) || [])[1], 10);
+const tableRows = (written.match(/^\| \d+ \| /gm) || []).length;
+
+const bad = [];
+if (rows.length !== expected) bad.push('스캔 ' + rows.length + ' ≠ 기대 ' + expected);
+if (summary !== expected) bad.push('endpoints.md 요약 ' + summary + ' ≠ 기대 ' + expected);
+if (tableRows !== expected) bad.push('endpoints.md 표 행 ' + tableRows + ' ≠ 기대 ' + expected);
+if (bad.length) {
+  console.log('❌ 개수 단언 실패 — ' + bad.join(' · '));
+  console.log('   컨트롤러가 늘거나 줄었으면 expected-endpoints.txt 를 함께 고칠 것.');
+  process.exit(1);
+}
+console.log('  개수 단언 ✅ 스캔 = endpoints.md 요약 = 표 행 = ' + expected);

@@ -1,0 +1,123 @@
+# 엔드포인트 전수 — 컨트롤러 스캔 ↔ 컬렉션 대조
+
+자동 생성: `node backend/docs/verify/endpoint-scan.js` (전체 점검 D · §3)
+컬렉션 두 벌(`temple-stamp-all`·`w2-hoehyang`)을 함께 읽는다.
+
+```
+엔드포인트 91 · ✅ 91 · ⚠ 0(그중 ch9 0) · ❌ 0
+```
+
+ch9 를 뺀 ⚠ 가 **0** 이다 — 챕터 9 몫(전자책·인쇄)만 남았다.
+접근 권한은 `SecurityConfig` 의 매처를 그대로 읽어 판정했다 — 손으로 적은 목록이 아니다.
+
+| # | 메서드 경로 | 인증 | newman 요청 id | 판정 |
+|---:|---|---|---|---|
+| 1 | POST `/api/admin/certificates/{certificateId}/revoke` | ADMIN | W:W28b · E:E14a · W2:W25 | ✅ |
+| 2 | POST `/api/admin/completions/recount` | ADMIN | W:W24 | ✅ |
+| 3 | POST `/api/admin/completions/recount/{userId}` | ADMIN | W:W23 · W:W23b · W:W23c | ✅ |
+| 4 | POST `/api/admin/contents/missions` | ADMIN | R:R23 · R:R30 | ✅ |
+| 5 | POST `/api/admin/contents/phrases` | ADMIN | R:R22a · R:R22b · X:X41 | ✅ |
+| 6 | POST `/api/admin/courses` | ADMIN | X:X38 · S·C:C01 · S·C:C02 | ✅ |
+| 7 | PUT `/api/admin/courses/{courseId}` | ADMIN | S·C:C09 | ✅ |
+| 8 | PATCH `/api/admin/courses/{courseId}/status` | ADMIN | S·C:C05 · S·C:C06 | ✅ |
+| 9 | PUT `/api/admin/ebooks/{ebookId}/files` | ADMIN | R:R24 | ✅ |
+| 10 | GET `/api/admin/ebooks/print-orders` | ADMIN | R:R25 · X:X40 · E:E22c | ✅ |
+| 11 | PATCH `/api/admin/ebooks/print-orders/{printOrderId}/status` | ADMIN | R:R26 · R:R31 · E:E20b | ✅ |
+| 12 | POST `/api/admin/housekeeping/run` | ADMIN | E:E04 · E:E08 · E:E09 | ✅ |
+| 13 | GET `/api/admin/kakao/places` | ADMIN | X:X39 · K:K01 · K:K02 | ✅ |
+| 14 | GET `/api/admin/manuscripts` | ADMIN | N:N11c · N:N19d · N:N25c | ✅ |
+| 15 | POST `/api/admin/manuscripts/{manuscriptId}/approve` | ADMIN | N:N10c · N:N13b · N:N13d | ✅ |
+| 16 | POST `/api/admin/manuscripts/{manuscriptId}/reject` | ADMIN | N:N11a · N:N11b | ✅ |
+| 17 | POST `/api/admin/manuscripts/{manuscriptId}/retire` | ADMIN | N:N15b · N:N18a · N:N23a | ✅ |
+| 18 | POST `/api/admin/manuscripts/import` | ADMIN | N:N19a · N:N19b · N:N19c | ✅ |
+| 19 | POST `/api/admin/rewards/claims/{userRewardId}/review` | ADMIN | R:R21 · W2:W14 · W2:W20 | ✅ |
+| 20 | GET `/api/admin/rewards/claims/pending` | ADMIN | R:R20 · R:R27 · W2:W22d | ✅ |
+| 21 | PUT `/api/admin/site-distances` | ADMIN | S·C:C07 | ✅ |
+| 22 | GET `/api/admin/sites` | ADMIN | V:V06b · G:G02 · X:X34 | ✅ |
+| 23 | POST `/api/admin/sites` | ADMIN | X:X08 · X:X36 · S·C:S01 | ✅ |
+| 24 | PUT `/api/admin/sites/{siteId}` | ADMIN | S·C:S03 · S·C:S04 | ✅ |
+| 25 | POST `/api/admin/sites/{siteId}/badges` | ADMIN | S·C:S08 | ✅ |
+| 26 | POST `/api/admin/sites/{siteId}/elements` | ADMIN | S·C:S10 · S·C:S10b · S·C:S11 | ✅ |
+| 27 | DELETE `/api/admin/sites/{siteId}/elements/{elementCode}` | ADMIN | S·C:S12 | ✅ |
+| 28 | POST `/api/admin/sites/{siteId}/qr` | ADMIN | T:T01 · T:T06b · T:T14a | ✅ |
+| 29 | POST `/api/admin/sites/{siteId}/qr/rotate` | ADMIN | T:T14b | ✅ |
+| 30 | PATCH `/api/admin/sites/{siteId}/status` | ADMIN | X:X42 · S·C:S05 · S·C:S06 | ✅ |
+| 31 | POST `/api/admin/sites/{siteId}/viewpoints` | ADMIN | S·C:S07 | ✅ |
+| 32 | POST `/api/admin/stamps/{stampId}/review` | ADMIN | T:T15 · W:WS2-e · W:WS3-e | ✅ |
+| 33 | GET `/api/admin/stamps/pending` | ADMIN | T:T15a · X:X37 | ✅ |
+| 34 | GET `/api/admin/users` | ADMIN | E:E24 · E:E24b · E:E24c | ✅ |
+| 35 | POST `/api/auth/login` | 없음 | A:A04 · A:A05 · A:A06 | ✅ |
+| 36 | POST `/api/auth/logout` | 없음 | A:A14 | ✅ |
+| 37 | POST `/api/auth/refresh` | 없음 | A:A09 · A:A10 · A:A12 | ✅ |
+| 38 | POST `/api/auth/signup` | 없음 | A:A01 · A:A02 · A:A03 | ✅ |
+| 39 | GET `/api/certificates` | USER | R:R10 · W:W01b · W:W04 | ✅ |
+| 40 | GET `/api/certificates/{certificateId}` | USER | E:E11 · E:E12 · E:E13 | ✅ |
+| 41 | GET `/api/certificates/verify/{serialNo}` | 없음 | R:R11 · W:W05 · W:W06 | ✅ |
+| 42 | GET `/api/content/guide` | 없음 | R:R18 | ✅ |
+| 43 | GET `/api/content/i18n/{lang}` | 없음 | R:R19a · R:R19b | ✅ |
+| 44 | GET `/api/courses` | 없음 | P:P08 · M:M02 · M:M03 | ✅ |
+| 45 | GET `/api/courses/{courseId}` | 없음 | T:T00c · T:T15b · M:M04 | ✅ |
+| 46 | GET `/api/ebooks` | USER | R:R12 · E:E03b · E:E08c | ✅ |
+| 47 | POST `/api/ebooks` | USER | E:E01 · E:E02 · E:E03 | ✅ |
+| 48 | GET `/api/ebooks/{ebookId}` | USER | E:E05 · E:E06 · E:E10 | ✅ |
+| 49 | GET `/api/ebooks/{ebookId}/download-url` | USER | R:R13 | ✅ |
+| 50 | GET `/api/editor/manuscripts` | EDITOR+ADMIN | N:N07c · N:N25b · N:N25g | ✅ |
+| 51 | POST `/api/editor/manuscripts` | EDITOR+ADMIN | N:N01 · N:N02a · N:N02b | ✅ |
+| 52 | PUT `/api/editor/manuscripts/{manuscriptId}` | EDITOR+ADMIN | N:N06 · N:N07a · N:N12 | ✅ |
+| 53 | POST `/api/editor/manuscripts/{manuscriptId}/submit` | EDITOR+ADMIN | N:N07b · N:N08 · N:N10b | ✅ |
+| 54 | GET `/api/meditations` | 없음 | V:V16 · R:R05 | ✅ |
+| 55 | GET `/api/meditations/{meditationId}` | 없음 | V:V17 · R:R06 | ✅ |
+| 56 | POST `/api/meditations/logs` | USER | V:V18 · V:V19 · R:R07 | ✅ |
+| 57 | GET `/api/passport` | USER | P:P01 · P:P02 · P:P07 | ✅ |
+| 58 | GET `/api/photos` | USER | V:V08 · X:X30 · X:X46 | ✅ |
+| 59 | GET `/api/photos/{siteId}` | USER | V:V08b | ✅ |
+| 60 | PUT `/api/photos/{siteId}` | USER | U:U-D0e · V:V04 · V:V05 | ✅ |
+| 61 | POST `/api/pilgrimages` | USER | P:P03 · P:P04 · P:P05 | ✅ |
+| 62 | GET `/api/print-orders` | USER | R:R15 · R:R29 · E:E18 | ✅ |
+| 63 | POST `/api/print-orders` | USER | R:R14 · E:E15 · E:E15b | ✅ |
+| 64 | DELETE `/api/print-orders/{printOrderId}` | USER | E:E19 · E:E19c · E:E20 | ✅ |
+| 65 | GET `/api/print-orders/{printOrderId}` | USER | E:E17 · E:E17b · E:E19b | ✅ |
+| 66 | GET `/api/regions` | 없음 | M:M01 · G:G06 | ✅ |
+| 67 | GET `/api/rewards` | USER | R:R08 · X:X31 · W:W08 | ✅ |
+| 68 | POST `/api/rewards/{userRewardId}/claim` | USER | R:R09 · R:R28 · W:W10 | ✅ |
+| 69 | GET `/api/sites/{siteId}` | 없음 | M:M06 · M:M07 · X:X14 | ✅ |
+| 70 | GET `/api/sites/{siteId}/guide` | 없음 | M:M17 | ✅ |
+| 71 | GET `/api/sites/{siteId}/page` | 없음 | M:M08 · M:M09 · M:M10 | ✅ |
+| 72 | POST `/api/stamps/{courseSiteId}/gps-check` | USER | T:T02 · T:T03 · T:T04b | ✅ |
+| 73 | GET `/api/stamps/{stampId}` | USER | T:T13 · X:X17 · X:X43 | ✅ |
+| 74 | POST `/api/stamps/{stampId}/mission` | USER | T:T05 · T:T09 · T:T10 | ✅ |
+| 75 | POST `/api/stamps/{stampId}/qr` | USER | T:T06 · T:T07 · T:T08 | ✅ |
+| 76 | GET `/api/stamps/by-slot/{courseSiteId}` | USER | T:T11b · X:X33 · X:X47 | ✅ |
+| 77 | POST `/api/stamps/evidence` | USER | T:T16a · T:T16b · T:T16 | ✅ |
+| 78 | GET `/api/thinkbox` | USER | V:V10 · V:V10b · V:V11 | ✅ |
+| 79 | POST `/api/thinkbox` | USER | V:V09 · R:R01 · X:X04 | ✅ |
+| 80 | DELETE `/api/thinkbox/{thinkboxId}` | USER | R:R04 · X:X18 · X:X45 | ✅ |
+| 81 | PATCH `/api/thinkbox/{thinkboxId}` | USER | V:V12 · V:V13 · R:R03 | ✅ |
+| 82 | GET `/api/thinkbox/flashback` | USER | V:V14 · V:V15 | ✅ |
+| 83 | GET `/api/uploads/presign` | USER | U:U-D0d · V:V01 · V:V02 | ✅ |
+| 84 | DELETE `/api/users/me` | USER | U:U-D1 · U:U-D2 · E:E25 | ✅ |
+| 85 | GET `/api/users/me` | USER | U:U01 · U:U02 · U:U-D0c | ✅ |
+| 86 | PATCH `/api/users/me` | USER | U:U03 · U:U04 · G:G01 | ✅ |
+| 87 | GET `/api/users/me/agreements` | USER | U:U07 · U:U08b | ✅ |
+| 88 | POST `/api/users/me/agreements` | USER | U:U05 · U:U06 · U:U08c | ✅ |
+| 89 | DELETE `/api/users/me/agreements/{agreementType}` | USER | U:U08a | ✅ |
+| 90 | GET `/api/verses` | 없음 | M:M14 | ✅ |
+| 91 | GET `/api/verses/{verseNo}` | 없음 | M:M15 · M:M16 | ✅ |
+
+## 비로그인 허용 목록 (SecurityConfig)
+
+여기 있는 것만 토큰 없이 열려야 한다. 나머지는 전부 401 — 실측은 `security-check.sh` S13.
+
+| 매처 | 메서드 | 왜 열려 있나 |
+|---|---|---|
+| `/api/auth/**` | ALL | 가입·로그인·재발급. 토큰을 얻는 문이라 열려 있어야 한다 |
+| `/error` | ALL | 스프링 기본 오류 경로 |
+| `/api/regions` | GET | 조회는 누구나. 하위 경로가 생길 때 함께 열리지 않도록 정확히 일치시킨다 |
+| `/api/courses/**` | GET | 조회는 누구나 — 앱을 깔기 전에도 코스를 볼 수 있어야 한다 |
+| `/api/sites/**` | GET | 조회는 누구나. 쓰기는 GET 제한 밖이라 로그인이 필요하다 |
+| `/api/verses/**` | GET | 게송은 공개 콘텐츠다 |
+| `/api/meditations/**` | GET | 명상 목록·상세는 공개. 재생 기록(POST)은 로그인이 필요하다 |
+| `/api/content/**` | GET | 예절 안내·i18n 사전. 로그인 전 화면에서도 쓴다 |
+| `/api/certificates/verify/**` | GET | 제3자 진위 확인. 인증서를 받은 사람이 아니라 그것을 보는 사람이 쓴다 |
+| `/health` | GET | 헬스체크. 막으면 배포가 401 로 실패한다 |
+| `/**` | OPTIONS | CORS preflight 전용. 여기에 `/**` 이 있는데 메서드를 무시하면 전 경로가 공개로 보인다 |

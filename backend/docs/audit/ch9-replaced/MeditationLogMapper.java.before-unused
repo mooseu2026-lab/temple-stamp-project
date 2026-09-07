@@ -1,0 +1,21 @@
+package com.templestamp.meditation;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
+
+@Mapper
+public interface MeditationLogMapper {
+
+    int save(MeditationLog log);
+
+    List<MeditationLog> findByUserId(@Param("userId") Long userId,
+                                     @Param("offset") int offset,
+                                     @Param("limit") int limit);
+
+    /** 탈퇴 — 재생 기록을 지운다. 통계로 쓰지 않는 개인 기록이다. */
+    int deleteByUser(@Param("userId") Long userId);
+
+    int sumPlayedSec(@Param("userId") Long userId);
+}

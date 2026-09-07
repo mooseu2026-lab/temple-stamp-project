@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    공유 실행 구성. workspace.xml 이 아니라 이 파일에 두는 이유 —
+    workspace.xml 은 IntelliJ 가 수시로 덮어쓰고 사람마다 달라서, 메인 클래스를 옮기면
+    다시 옛 경로를 가리키게 된다.
+
+    환경변수를 여기에 등록하지 않는다. 비밀값은 프로젝트 루트의 .env 에 두고,
+    application.yml 의  spring.config.import: optional:file:.env[.properties]  가 읽는다.
+    IDE 설정에 키를 박아 두면 팀원마다 값이 달라지고, 실행 구성을 공유하는 순간 키가 새어 나간다.
+    그래서 WORKING_DIRECTORY 를 프로젝트 루트로 고정해 .env 를 확실히 찾게만 해 둔다.
+  -->
+  <configuration name="TempleStampApplication" type="SpringBootApplicationConfigurationType"
+                 factoryName="Spring Boot" nameIsGenerated="false">
+    <module name="temple-stamp-project.main" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.templestamp.TempleStampApplication" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

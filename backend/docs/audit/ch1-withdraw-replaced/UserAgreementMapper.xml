@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.user.UserAgreementMapper">
+
+    <!--
+      같은 (회원·항목·버전) 이 이미 있으면 새 행을 만들지 않고 철회만 되돌린다.
+      agreed_at 은 건드리지 않는다 — 최초 동의 시각이 분쟁의 근거이기 때문이다.
+    -->
+    <insert id="agree">
+        INSERT INTO user_agreement (user_id, agreement_type, agreement_version, agreed_at)
+        VALUES (#{userId}, #{agreementType}, #{agreementVersion}, NOW())
+        ON DUPLICATE KEY UPDATE withdrawn_at = NULL
+    </insert>
+
+    <update id="withdraw">
+        UPDATE user_agreement
+        SET withdrawn_at = NOW()
+        WHERE user_id = #{userId}
+          AND agreement_type = #{agreementType}
+          AND agreement_version = #{agreementVersion}
+          AND withdrawn_at IS NULL
+    </update>
+
+    <update id="withdrawByType">
+        UPDATE user_agreement
+        SET withdrawn_at = NOW()
+        WHERE user_id = #{userId}
+          AND agreement_type = #{agreementType}
+          AND withdrawn_at IS NULL
+    </update>
+
+    <select id="findByUserId" resultType="com.templestamp.user.UserAgreement">
+        SELECT user_agreement_id, user_id, agreement_type, agreement_version,
+               agreed_at, withdrawn_at
+        FROM user_agreement
+        WHERE user_id = #{userId}
+        ORDER BY agreement_type, agreement_version
+    </select>
+
+    <select id="isAgreed" resultType="int">
+        SELECT EXISTS (SELECT 1
+                       FROM user_agreement
+                       WHERE user_id = #{userId}
+                         AND agreement_type = #{agreementType}
+                         AND agreement_version = #{agreementVersion}
+                         AND withdrawn_at IS NULL)
+    </select>
+
+</mapper>

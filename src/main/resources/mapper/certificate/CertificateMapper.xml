@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.certificate.CertificateMapper">
+
+    <sql id="columns">
+        certificate_id, user_id, pilgrimage_id, cert_type, status, serial_no,
+        issued_at, revoked_at, revoke_reason, file_key
+    </sql>
+
+    <!-- 회향 인증서는 pilgrimage_id 가 NULL 이라 코스·권역이 비어 있다. LEFT JOIN 으로 받는다. -->
+    <sql id="rowSelect">
+        SELECT cert.certificate_id,
+               cert.user_id,
+               u.nickname,
+               u.status AS holder_status,
+               cert.pilgrimage_id,
+               c.course_id,
+               c.name AS course_name,
+               r.name AS region_name,
+               cert.cert_type,
+               cert.status,
+               cert.serial_no,
+               cert.issued_at,
+               cert.revoked_at,
+               cert.file_key
+        FROM certificate cert
+                 JOIN users u ON u.user_id = cert.user_id
+                 LEFT JOIN pilgrimage p ON p.pilgrimage_id = cert.pilgrimage_id
+                 LEFT JOIN course c ON c.course_id = p.course_id
+                 LEFT JOIN region r ON r.region_id = c.region_id
+    </sql>
+
+    <insert id="save" parameterType="com.templestamp.certificate.Certificate"
+            useGeneratedKeys="true" keyProperty="certificateId">
+        INSERT INTO certificate (user_id, pilgrimage_id, cert_type, status, serial_no, issued_at)
+        VALUES (#{userId}, #{pilgrimageId}, #{certType}, 'VALID', #{serialNo}, NOW())
+    </insert>
+
+    <select id="findValidByPilgrimageId" resultType="com.templestamp.certificate.Certificate">
+        SELECT <include refid="columns"/>
+        FROM certificate
+        WHERE pilgrimage_id = #{pilgrimageId} AND status = 'VALID'
+    </select>
+
+    <select id="findValidByUserAndType" resultType="com.templestamp.certificate.Certificate">
+        SELECT <include refid="columns"/>
+        FROM certificate
+        WHERE user_id = #{userId} AND cert_type = #{certType} AND status = 'VALID'
+        ORDER BY certificate_id
+        LIMIT 1
+    </select>
+
+    <select id="findById" resultType="com.templestamp.certificate.Certificate">
+        SELECT <include refid="columns"/> FROM certificate WHERE certificate_id = #{certificateId}
+    </select>
+
+    <!-- 회수된 번호도 조회된다. 상태를 함께 내려 주면 확인하는 사람이 "무효" 를 볼 수 있다(§3-4). -->
+    <select id="findRowBySerial" resultType="com.templestamp.certificate.dto.CertificateRow">
+        <include refid="rowSelect"/>
+        WHERE cert.serial_no = #{serialNo}
+    </select>
+
+    <select id="findRowsByUserId" resultType="com.templestamp.certificate.dto.CertificateRow">
+        <include refid="rowSelect"/>
+        WHERE cert.user_id = #{userId}
+        ORDER BY cert.issued_at DESC, cert.certificate_id DESC
+    </select>
+
+    <!-- 1장 조회(챕터 9 §3). 목록과 같은 rowSelect 를 쓰므로 응답 모양이 갈라지지 않는다. -->
+    <select id="findRowById" resultType="com.templestamp.certificate.dto.CertificateRow">
+        <include refid="rowSelect"/>
+        WHERE cert.certificate_id = #{certificateId}
+    </select>
+
+    <update id="updateFileKey">
+        UPDATE certificate SET file_key = #{fileKey} WHERE certificate_id = #{certificateId}
+    </update>
+
+    <!--
+      VALID 일 때만 바뀐다. 이미 회수된 것을 다시 회수하면 0행 —
+      연쇄가 두 번 돌아도 회수 시각·사유가 덮이지 않는다.
+    -->
+    <update id="revokeByPilgrimageId">
+        UPDATE certificate
+        SET status        = 'REVOKED',
+            revoked_at    = NOW(),
+            revoke_reason = #{reason}
+        WHERE pilgrimage_id = #{pilgrimageId}
+          AND status = 'VALID'
+    </update>
+
+    <update id="revokeById">
+        UPDATE certificate
+        SET status        = 'REVOKED',
+            revoked_at    = NOW(),
+            revoke_reason = #{reason}
+        WHERE certificate_id = #{certificateId}
+          AND status = 'VALID'
+    </update>
+
+    <update id="revokeAllByUser">
+        UPDATE certificate
+        SET status        = 'REVOKED',
+            revoked_at    = NOW(),
+            revoke_reason = #{reason}
+        WHERE user_id = #{userId}
+          AND status = 'VALID'
+    </update>
+
+    <update id="revokeByUserAndType">
+        UPDATE certificate
+        SET status        = 'REVOKED',
+            revoked_at    = NOW(),
+            revoke_reason = #{reason}
+        WHERE user_id = #{userId}
+          AND cert_type = #{certType}
+          AND status = 'VALID'
+    </update>
+
+</mapper>

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.site.SiteMapper">
+
+    <sql id="columns">
+        site_id, name, latitude, longitude, verify_radius, qr_version, qr_location_hint,
+        parking_info, access_info, meal_available, status, created_at, updated_at
+    </sql>
+
+    <select id="findById" resultType="com.templestamp.site.Site">
+        SELECT <include refid="columns"/> FROM site WHERE site_id = #{siteId}
+    </select>
+
+    <select id="findActiveById" resultType="com.templestamp.site.Site">
+        SELECT <include refid="columns"/> FROM site WHERE site_id = #{siteId} AND status = 'ACTIVE'
+    </select>
+
+    <select id="search" resultType="com.templestamp.site.Site">
+        SELECT <include refid="columns"/>
+        FROM site
+        WHERE status = 'ACTIVE'
+        <if test="keyword != null">
+            AND name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        ORDER BY name
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countSearch" resultType="long">
+        SELECT COUNT(*)
+        FROM site
+        WHERE status = 'ACTIVE'
+        <if test="keyword != null">
+            AND name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+    </select>
+
+    <insert id="save" parameterType="com.templestamp.site.Site"
+            useGeneratedKeys="true" keyProperty="siteId">
+        <!-- status 는 넣지 않는다. DB DEFAULT 로 DRAFT 가 된다 — 등록만으로는 공개되지 않는다. -->
+        INSERT INTO site (name, latitude, longitude, verify_radius, qr_location_hint,
+                          parking_info, access_info, meal_available)
+        VALUES (#{name}, #{latitude}, #{longitude}, #{verifyRadius}, #{qrLocationHint},
+                #{parkingInfo}, #{accessInfo}, #{mealAvailable})
+    </insert>
+
+    <update id="update" parameterType="com.templestamp.site.Site">
+        UPDATE site
+        SET name             = #{name},
+            latitude         = #{latitude},
+            longitude        = #{longitude},
+            verify_radius    = #{verifyRadius},
+            qr_location_hint = #{qrLocationHint},
+            parking_info     = #{parkingInfo},
+            access_info      = #{accessInfo},
+            meal_available   = #{mealAvailable}
+        WHERE site_id = #{siteId}
+        <!-- status 는 건드리지 않는다. 내용 수정이 공개 여부를 바꾸면 안 된다 —
+             그 길은 PATCH /api/admin/sites/{id}/status 하나뿐이다. -->
+    </update>
+
+    <!-- 버전을 올리면 그 전에 뿌린 QR 은 서명이 달라져 전부 무효가 된다. -->
+    <update id="bumpQrVersion">
+        UPDATE site SET qr_version = qr_version + 1 WHERE site_id = #{siteId}
+    </update>
+
+
+    <update id="updateStatus">
+        UPDATE site SET status = #{status} WHERE site_id = #{siteId}
+    </update>
+
+    <select id="countActiveCourseAssignments" resultType="int">
+        SELECT COUNT(*)
+        FROM course_site cs
+        JOIN course c ON c.course_id = cs.course_id
+        WHERE cs.site_id = #{siteId} AND c.status = 'ACTIVE'
+    </select>
+
+    <!-- 관리자 목록. 공개 검색과 달리 status 조건이 없다 — 등록 직후 DRAFT 사찰을 찾아야 하므로. -->
+    <select id="searchAnyStatus" resultType="com.templestamp.site.Site">
+        SELECT <include refid="columns"/>
+        FROM site
+        <where>
+            <if test="keyword != null">AND name LIKE CONCAT('%', #{keyword}, '%')</if>
+            <if test="status != null">AND status = #{status}</if>
+        </where>
+        ORDER BY site_id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countSearchAnyStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM site
+        <where>
+            <if test="keyword != null">name LIKE CONCAT('%', #{keyword}, '%')</if>
+        </where>
+    </select>
+
+
+    <select id="findIdBySeedKey" resultType="long">
+        SELECT site_id FROM site WHERE seed_key = #{seedKey}
+    </select>
+
+    <update id="updateSeedKey">
+        UPDATE site SET seed_key = #{seedKey} WHERE site_id = #{siteId}
+    </update>
+
+</mapper>

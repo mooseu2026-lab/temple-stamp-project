@@ -1,0 +1,170 @@
+spring:
+  application:
+    name: temple-stamp
+  config:
+    # 확장자 없는 파일을 properties 형식으로 읽는다. optional: 이라 파일이 없어도 로딩은 통과.
+    # 순서가 곧 우선순위다 — 뒤에 오는 .env.local 이 .env 를 덮어쓴다.
+    #   .env       : 커밋되는 기본값(비밀 아님)
+    #   .env.local : 커밋되지 않는 비밀값
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:.env.local[.properties]
+  profiles:
+    default: local
+
+  # --- 데이터베이스 ---
+  # URL·계정명·비밀번호 모두 .env 에서 온다. yml 에 기본값을 두지 않는 이유는,
+  # 기본값이 있으면 .env 를 못 읽었을 때 엉뚱한 DB 에 붙어 버리기 때문이다.
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  sql:
+    init:
+      # schema 는 CREATE TABLE IF NOT EXISTS, data 는 INSERT IGNORE 라 멱등.
+      # always 로 둬도 재기동마다 안전하다.
+      mode: ${SQL_INIT_MODE:always}
+      encoding: UTF-8
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/data.sql
+
+  jackson:
+    # 규약 §8 — null 필드도 키를 내려준다. default-property-inclusion 을 건드리지 않는다.
+    time-zone: Asia/Seoul
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+
+server:
+  port: 8080
+  # 같은 와이파이의 휴대폰이 PC 서버에 붙으려면 모든 인터페이스에서 받아야 한다.
+  # 내 PC 에서만 쓰려면 .env 에 SERVER_ADDRESS=127.0.0.1 을 넣는다.
+  address: ${SERVER_ADDRESS:0.0.0.0}
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+  error:
+    whitelabel:
+      enabled: false
+
+# --- MyBatis ---
+mybatis:
+  # src/main/resources/mapper/<도메인>/*.xml
+  mapper-locations: classpath*:mapper/**/*.xml
+  # type-aliases-package 는 뺐다. 단순 클래스명이 중복된 DTO 가 있어서 별칭 등록이 충돌한다.
+  # 현재 매퍼는 resultType 에 FQCN 을 쓰므로 필요 없다.
+  configuration:
+    # user_id -> userId 자동 매핑
+    map-underscore-to-camel-case: true
+    # null 파라미터 바인딩 (tier 처럼 null 허용 컬럼용). 기본값 OTHER 는 드라이버에 따라 실패한다
+    jdbc-type-for-null: NULL
+
+logging:
+  level:
+    # 매퍼 인터페이스가 이 패키지 아래라, debug 면 실행 SQL 이 찍힌다
+    com.templestamp: debug
+
+# --- JWT / QR 서명키 ---
+# 키 이름은 AppProperties record 필드명과 1:1로 맞춘다.
+# access-seconds → accessSeconds, refresh-days → refreshDays (relaxed binding)
+app:
+  jwt:
+    secret: ${JWT_SECRET}          # Base64 인코딩된 32바이트 이상
+    access-seconds: 1800           # 액세스 30분 (확정)
+    refresh-days: 14               # 리프레시 14일 (기획 명세 · 챕터 10 에서 7 → 14 로 되돌림)
+  qr:
+    secret: ${QR_SECRET}           # 로그인 키와 반드시 다른 값
+    # 현장 QR 유효 시간(초). 상설 안내판은 발급 시 개별로 길게 줄 수 있다.
+    token-seconds: 300
+  # refresh 쿠키의 Secure 속성. 기본(local)은 http 라 false.
+  # prod 프로파일에서 true 로 덮어쓴다. application-prod.yml 참고.
+  cookie:
+    secure: false
+
+# --- CORS ---
+cors:
+  # 휴대폰에서 붙을 때는 .env 의 FRONTEND_URL 을 PC 사설 IP 로 바꾼다.
+  allowed-origins: ${FRONTEND_URL:http://localhost:5173},http://localhost:3000
+
+# --- 스탬프 인증 ---
+stamp:
+  # GPS 통과 후 QR·다짐까지 마쳐야 하는 시간(분)
+  session-minutes: 60
+  # site_distance 에 없는 사찰 쌍의 기본 최소 이동시간(분). 0이면 검사하지 않는다
+  default-travel-minutes: 0
+  # 하루에 받을 수 있는 도장 수 (명세 확정)
+  daily-limit: 5
+  # 예외 접수 하루 한도 (명세 확정)
+  evidence-daily-limit: 2
+
+# --- 보상 감사 ---
+reward:
+  # 초기엔 감사 점수를 기록만 하고 전부 통과시킨다. 데이터가 쌓인 뒤 켠다.
+  audit-blocking: false
+  review-threshold: 60
+  min-gap-seconds: 600
+  # 회향(전 코스 완주)을 인정하기 시작하는 최소 ACTIVE 코스 수.
+  # 이 하한이 없으면 ACTIVE 코스가 1개뿐인 초기에 코스 하나만 끝내도 회향 인증서·실물 기념품이 나간다.
+  hoehyang-min-courses: ${HOEHYANG_MIN_COURSES:12}
+
+# --- 오브젝트 스토리지 ---
+storage:
+  # local 이면 presign 이 로컬 스텁 URL 을 만든다. 실제 버킷은 prod 에서 교체.
+  provider: local
+  bucket: temple-stamp-local
+  endpoint: http://localhost:9000
+  secret-key: ${STORAGE_SECRET_KEY:local-storage-secret}
+  presign-seconds: 300
+  max-upload-bytes: 10485760
+  # provider=local 일 때 파일 바이트를 두는 자리. 비우면 임시 디렉터리 아래로 간다.
+  # 운영(S3)에서는 쓰이지 않는다.
+  local-dir: ${STORAGE_LOCAL_DIR:}
+
+# --- 카카오 ---
+kakao:
+  rest-key: ${KAKAO_REST_API_KEY:}    # 저장소 기존 env 이름 유지. 비어 있으면 관리자 검색만 503 KAKAO-5030
+  base-url: https://dapi.kakao.com
+  timeout-millis: 3000                # 외부 호출 상한. 없으면 카카오가 느릴 때 톰캣 스레드가 함께 묶인다
+
+# --- Actuator ---
+# health 하나만 연다. base-path 가 / 라서 include 에 다른 것을 넣으면 곧바로 루트에 노출된다.
+# /health 는 SecurityConfig 에서 permitAll — 열지 않으면 로드밸런서가 401 을 받는다.
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: health          # health 외 절대 노출 금지 — base-path 가 / 라서
+      path-mapping:
+        health: health
+
+# 원고(챕터 8) — 같은 자리에 둘 수 있는 변형 수와 CSV 반입 상한.
+# 상한이 없으면 한 자리에 원고가 무한히 쌓여 편집자가 무엇이 살아 있는지 알 수 없게 된다.
+manuscript:
+  max-variants: ${MANUSCRIPT_MAX_VARIANTS:3}
+  import-max-rows: 1000
+  import-max-bytes: 2097152        # 2 MB
+
+# 전자책·인쇄·청소기(챕터 9). 상한은 저장소 비용과 사용자 불만 사이의 선이라 설정으로 뺀다.
+ebook:
+  max-ready: ${EBOOK_MAX_READY:5}         # 사용자당 남겨 두는 권수. 넘으면 최고령부터 지운다
+  daily-limit: ${EBOOK_DAILY_LIMIT:3}     # 하루 생성 상한(READY 기준)
+  photo-max-px: 1200                      # 사진 긴 변. 원본 그대로면 60장에 수백 MB 가 된다
+  jpeg-quality: 0.8
+  build-per-run: 3                        # 청소기 한 번에 만드는 권수
+  orphan-per-run: 100                     # 청소기 한 번에 지우는 파일 키 수
+  orphan-max-retry: 5                     # 넘기면 FAILED + needs_review — 못 지우는 키가 영원히 돌지 않게
+  token-per-run: 1000
+  token-grace-hours: 24                   # 만료 뒤 이만큼 더 지난 것만. 폐기됐어도 미만료면 남긴다(재사용 탐지)
+  print-price: ${PRINT_PRICE:15000}       # 부수당 가격(원). 결제 연동은 범위 밖 — 정리.md §7
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}   # 인증서 QR 이 가리키는 주소

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# backend/docs/verify/security-check.sh — 보안 점검 (전체 점검 C §4)
+#
+#   bash backend/docs/verify/security-check.sh [bootRun 로그 파일]
+#
+# 여기서 보는 것은 요청으로 확인할 수 없는 것들이다 — 설정·저장된 값·로그.
+#   S5 토큰   S6 시크릿   S7 비밀번호   S11 CORS   S12 개인정보
+# S1·S2·S3·S8·S9·S10 은 컬렉션 X 폴더가 요청으로 확인한다.
+cd "$(dirname "$0")/../../.."
+LOG=${1:-app.log}
+OUT=backend/docs/verify/security-check-result.txt
+BASE=${BASE_URL:-http://localhost:8080}
+DB=temple_stamp_project
+DB_USER=${DB_USER:-root}
+DB_PASS=${DB_PASS:-1234}
+MYSQL=${MYSQL_BIN:-mysql}
+PASS=0; FAIL=0
+
+q() { "$MYSQL" -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 -N -e "USE $DB; $1" 2>/dev/null | tr -d '\r'; }
+say() { echo "$@" | tee -a "$OUT"; }
+ok()  { say "  ✅ $1"; PASS=$((PASS+1)); }
+ng()  { say "  ❌ $1"; FAIL=$((FAIL+1)); }
+chk() { if [ "$1" = "$2" ]; then ok "$3 ($1)"; else ng "$3 — 기대 '$2' 실제 '$1'"; fi; }
+
+: > "$OUT"
+say "=================================================================="
+say " 보안 점검 — $(date '+%Y-%m-%d %H:%M:%S')"
+say "=================================================================="
+
+say ""
+say "── S5  토큰 ────────────────────────────────────────────────────"
+say "기대: 액세스 30분 · refresh 는 해시로만 저장 · 쿠키 HttpOnly·SameSite · prod 는 Secure."
+# 위쪽 주석 줄에도 "access-seconds" 라는 말이 있다. 들여쓴 설정 줄만 골라야 값이 잡힌다.
+ACCESS_SEC=$(grep -E '^[[:space:]]+access-seconds:' src/main/resources/application.yml | head -1 | sed 's/#.*//' | tr -dc '0-9')
+chk "${ACCESS_SEC:-없음}" "1800" "액세스 토큰 수명(초 · 30분)"
+HASHED=$(q "SELECT COUNT(*) FROM refresh_token WHERE token_hash LIKE '%.%' OR CHAR_LENGTH(token_hash) <> 64;")
+chk "${HASHED:-?}" "0" "refresh 는 전부 SHA-256 해시(64자)로만 저장"
+COOKIE=$(curl -s -i -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
+  --data-binary @backend/docs/verify/body/admin-login.json | grep -i '^set-cookie' | head -1)
+say "  Set-Cookie: $COOKIE"
+echo "$COOKIE" | grep -qi 'HttpOnly' && ok "HttpOnly" || ng "HttpOnly 없음"
+echo "$COOKIE" | grep -qi 'SameSite' && ok "SameSite" || ng "SameSite 없음"
+if grep -qE 'secure:\s*true' src/main/resources/application-prod.yml 2>/dev/null; then ok "prod 는 Secure=true"; else ng "prod 에 cookie.secure=true 가 없다"; fi
+
+say ""
+say "── S6  시크릿 ──────────────────────────────────────────────────"
+say "기대: JWT≠QR · .env.local 미커밋 · 로그에 토큰·비밀번호·시크릿 미출력."
+JWT=$(grep -E '^JWT_SECRET=' .env.local 2>/dev/null | cut -d= -f2-)
+QR=$(grep -E '^QR_SECRET=' .env.local 2>/dev/null | cut -d= -f2-)
+if [ -n "$JWT" ] && [ "$JWT" != "$QR" ]; then ok "JWT 와 QR 시크릿이 다르다"; else ng "JWT·QR 시크릿이 같거나 비어 있다"; fi
+if grep -qx '.env.local' .gitignore 2>/dev/null; then ok ".gitignore 에 .env.local"; else ng ".env.local 이 .gitignore 에 없다"; fi
+LEAK=$(grep -nEi 'JWT_SECRET|QR_SECRET|DB_PASSWORD|KAKAO_REST_API_KEY|password=[^&]|Bearer ey' "$LOG" 2>/dev/null | head -5)
+if [ -z "$LEAK" ]; then ok "로그에 시크릿·토큰·비밀번호 없음"; else ng "로그에 새는 값이 있다"; echo "$LEAK" | sed 's/^/      /' | tee -a "$OUT"; fi
+SRC_LEAK=$(grep -rnE 'log\.(info|warn|error|debug)\([^)]*(getPassword|accessToken|refreshToken|secret)' src/main/java 2>/dev/null | head -5)
+if [ -z "$SRC_LEAK" ]; then ok "로그 문장에 토큰·비밀번호를 넣는 코드 없음"; else ng "로그 문장이 민감값을 찍는다"; echo "$SRC_LEAK" | sed 's/^/      /' | tee -a "$OUT"; fi
+
+say ""
+say "── S7  비밀번호 ────────────────────────────────────────────────"
+say "기대: BCrypt(\$2a\$/\$2b\$) 로만 저장. 평문·MD5·SHA 흔적 0."
+TOTAL=$(q "SELECT COUNT(*) FROM users;")
+BC=$(q "SELECT COUNT(*) FROM users WHERE password LIKE '\$2a\$%' OR password LIKE '\$2b\$%' OR password LIKE '\$2y\$%';")
+chk "$BC" "$TOTAL" "전 계정이 BCrypt 해시 ($TOTAL 계정)"
+LEN=$(q "SELECT MIN(CHAR_LENGTH(password)) FROM users;")
+if [ "${LEN:-0}" -ge 59 ]; then ok "해시 길이 최소 $LEN (BCrypt 60)"; else ng "해시가 짧다 — $LEN"; fi
+
+say ""
+say "── S11  CORS ───────────────────────────────────────────────────"
+say "기대: allow-credentials 가 true 면 오리진에 * 를 쓸 수 없다. 허용 밖 오리진은 거부."
+if grep -qE 'allowed-origins:\s*\*' src/main/resources/application*.yml 2>/dev/null; then
+  ng "오리진에 * 가 있다 (credentials 와 함께 쓸 수 없다)"; else ok "오리진에 * 없음"; fi
+ALLOWED=$(grep -A2 '^cors:' src/main/resources/application.yml | grep 'allowed-origins' | cut -d: -f2- | tr -d ' ')
+say "  허용 오리진: $ALLOWED"
+PRE=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$BASE/api/regions" \
+  -H 'Origin: http://evil.example.com' -H 'Access-Control-Request-Method: GET')
+ALLOW_HDR=$(curl -s -i -X OPTIONS "$BASE/api/regions" -H 'Origin: http://evil.example.com' \
+  -H 'Access-Control-Request-Method: GET' | grep -ci 'access-control-allow-origin' || true)
+say "  허용 밖 오리진 preflight → HTTP $PRE · Allow-Origin 헤더 $ALLOW_HDR 개"
+if [ "$ALLOW_HDR" = "0" ]; then ok "허용 밖 오리진에 Allow-Origin 을 주지 않는다"; else ng "허용 밖 오리진에 Allow-Origin 을 준다"; fi
+
+say ""
+say "── S12  개인정보 ───────────────────────────────────────────────"
+say "기대: 위치동의 없이 GPS 403 · 공개 인증서 닉네임 마스킹 · 비공개/타인얼굴은 전자책에서 제외."
+if grep -q 'requireLocationAgreement' src/main/java/com/templestamp/stamp/StampService.java; then
+  ok "GPS 인증이 위치기반서비스 동의를 먼저 본다"; else ng "위치 동의 검사가 없다"; fi
+if grep -q 'maskNickname' src/main/java/com/templestamp/certificate/dto/CertificateVerifyResponse.java; then
+  ok "공개 인증서 응답이 닉네임을 마스킹한다"; else ng "닉네임 마스킹이 없다"; fi
+PUBQ=$(grep -c 'is_private = 0' src/main/resources/mapper/thinkbox/ThinkboxMapper.xml || true)
+if [ "${PUBQ:-0}" -ge 1 ]; then ok "전자책 수록 질의가 is_private = 0 만 고른다"; else ng "전자책 질의에 is_private 필터가 없다"; fi
+say "  전자책 제외 대상 실측:"
+q "SELECT CONCAT('    thinkbox 비공개 ', SUM(is_private), ' / 전체 ', COUNT(*)) FROM thinkbox;"
+q "SELECT CONCAT('    photo 비공개 ', SUM(is_private), ' · 타인얼굴 ', SUM(has_other_face), ' / 전체 ', COUNT(*)) FROM photo;"
+
+say ""
+say "=================================================================="
+say " 통과 $PASS · 실패 $FAIL   결과 파일: $OUT"
+say "=================================================================="
+[ "$FAIL" -eq 0 ]

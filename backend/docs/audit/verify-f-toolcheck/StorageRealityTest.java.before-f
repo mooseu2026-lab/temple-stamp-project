@@ -1,0 +1,272 @@
+package com.templestamp.verify;
+
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
+import com.google.zxing.common.HybridBinarizer;
+import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.parser.PdfTextExtractor;
+import com.templestamp.certificate.CertificateMapper;
+import com.templestamp.certificate.CertificateService;
+import com.templestamp.ebook.EbookService;
+import com.templestamp.global.config.EbookProperties;
+import com.templestamp.global.housekeeping.OrphanCleaner;
+import com.templestamp.upload.ObjectStorageClient;
+import com.templestamp.user.StorageOrphanMapper;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.UncheckedIOException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * 저장소 실재 확인(최종 점검 F §3-2).
+ * <p>
+ * 이 클래스가 있는 이유는 챕터 9 에서 나온 결함 하나 때문이다 —
+ * <b>키만 기록되고 바이트는 저장된 적이 없었다.</b> 그때까지의 검증은 전부
+ * "키가 응답에 있다" 로 통과했다. 그래서 이번 점검의 원칙이 바뀌었다:
+ * <b>파일은 저장소에서 실제 바이트를 읽어야 ✅ 이고, 키 존재는 근거가 아니다.</b>
+ * <p>
+ * 여기서 확인하는 것은 다섯이다 — 사진 바이트와 헤더 · 전자책 PDF 의 내용 ·
+ * 인증서 QR 이 가리키는 주소 · 지운 파일이 정말 없는가 · 서명 URL 의 만료가 실제로 실려 있는가.
+ */
+@SpringBootTest
+class StorageRealityTest {
+
+    private static final long COURSE_ID = 1L;
+
+    @Autowired ObjectStorageClient storageClient;
+    @Autowired EbookService ebookService;
+    @Autowired CertificateService certificateService;
+    @Autowired CertificateMapper certificateMapper;
+    @Autowired OrphanCleaner orphanCleaner;
+    @Autowired StorageOrphanMapper storageOrphanMapper;
+    @Autowired EbookProperties ebookProperties;
+    @Autowired JdbcTemplate jdbc;
+
+    private long userId;
+    private long pilgrimageId;
+    private String siteName;
+    private final List<String> keys = new ArrayList<>();
+
+    @BeforeEach
+    void setUp() {
+        jdbc.update("INSERT INTO users (email, password, nickname, role, tier, locale) "
+                + "VALUES ('storage-real@test.com', 'x', '실재확인', 'USER', 'AGE40', 'ko')");
+        userId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        jdbc.update("INSERT INTO pilgrimage (user_id, course_id, status) VALUES (?, ?, 'IN_PROGRESS')",
+                userId, COURSE_ID);
+        pilgrimageId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    @AfterEach
+    void tearDown() {
+        keys.forEach(k -> { try { storageClient.delete(k); } catch (Exception ignored) { } });
+        jdbc.update("DELETE FROM storage_orphan WHERE file_key LIKE ?", "PHOTO/" + userId + "/%");
+        jdbc.update("DELETE FROM storage_orphan WHERE file_key LIKE ?", "EBOOK/" + userId + "/%");
+        jdbc.update("DELETE FROM ebook WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM certificate WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM photo WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM stamp WHERE pilgrimage_id = ?", pilgrimageId);
+        jdbc.update("DELETE FROM pilgrimage WHERE pilgrimage_id = ?", pilgrimageId);
+        jdbc.update("DELETE FROM users WHERE user_id = ?", userId);
+    }
+
+    /* ---------------- ① 사진 ---------------- */
+
+    @Test
+    @DisplayName("① 사진은 바이트로 되읽히고 JPEG·PNG 머리글을 가진다 — 키가 있다는 것은 근거가 아니다")
+    void photoBytesRoundTrip() throws Exception {
+        String jpg = "PHOTO/%d/real.jpg".formatted(userId);
+        byte[] jpgBytes = image("jpg", 800, 600);
+        storageClient.put(jpg, jpgBytes, "image/jpeg");
+        keys.add(jpg);
+
+        assertThat(storageClient.exists(jpg)).isTrue();
+        byte[] back = storageClient.getBytes(jpg);
+        assertThat(back).as("길이가 같다").hasSize(jpgBytes.length);
+        assertThat(back.length).isGreaterThan(0);
+        // JPEG 는 FF D8 FF 로 시작한다. "파일이 있다" 와 "그 파일이 사진이다" 는 다른 말이다.
+        assertThat(back[0] & 0xFF).isEqualTo(0xFF);
+        assertThat(back[1] & 0xFF).isEqualTo(0xD8);
+        assertThat(back[2] & 0xFF).isEqualTo(0xFF);
+        assertThat(ImageIO.read(new ByteArrayInputStream(back))).as("실제로 열린다").isNotNull();
+
+        String png = "PHOTO/%d/real.png".formatted(userId);
+        byte[] pngBytes = image("png", 40, 40);
+        storageClient.put(png, pngBytes, "image/png");
+        keys.add(png);
+        byte[] pngBack = storageClient.getBytes(png);
+        assertThat(new byte[]{pngBack[1], pngBack[2], pngBack[3]})
+                .as("PNG 머리글 \\x89PNG").isEqualTo("PNG".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+    }
+
+    /* ---------------- ② 전자책 ---------------- */
+
+    @Test
+    @DisplayName("② 전자책은 %PDF 로 시작하고, 텍스트에 한글·사찰명·인증서 번호가 들어 있다")
+    void ebookBytesCarryContent() throws Exception {
+        String serial = seedStampAndCertificate();
+        long id = ebookService.request(userId).ebookId();
+        assertThat(ebookService.build(id)).isTrue();
+        String key = "EBOOK/%d/%d.pdf".formatted(userId, id);
+        keys.add(key);
+
+        assertThat(storageClient.exists(key)).isTrue();
+        byte[] pdf = storageClient.getBytes(key);
+        assertThat(pdf.length).isGreaterThan(1000);
+        assertThat(new String(pdf, 0, 4)).isEqualTo("%PDF");
+
+        PdfReader reader = new PdfReader(pdf);
+        StringBuilder text = new StringBuilder();
+        PdfTextExtractor extractor = new PdfTextExtractor(reader);
+        for (int page = 1; page <= reader.getNumberOfPages(); page++) {
+            text.append(extractor.getTextFromPage(page));
+        }
+        reader.close();
+
+        assertThat(text.toString()).as("한글이 □ 로 나가지 않았다").contains("나의 순례 기록");
+        assertThat(text.toString()).as("사찰명이 실렸다").contains(siteName);
+        assertThat(text.toString()).as("인증서 번호가 실렸다").contains(serial);
+    }
+
+    /* ---------------- ③ 인증서 ---------------- */
+
+    @Test
+    @DisplayName("③ 인증서 PDF 는 저장소에서 읽히고, 그 QR 이 진위 확인 주소로 디코드된다")
+    void certificatePdfAndQr() throws Exception {
+        String serial = seedStampAndCertificate();
+        Long certId = jdbc.queryForObject(
+                "SELECT certificate_id FROM certificate WHERE user_id = ?", Long.class, userId);
+
+        certificateService.getOne(userId, certId);   // 첫 조회에 만들어진다
+        String key = "CERT/%d/%d.pdf".formatted(userId, certId);
+        keys.add(key);
+
+        assertThat(storageClient.exists(key)).as("파일이 실제로 있다").isTrue();
+        byte[] pdf = storageClient.getBytes(key);
+        assertThat(new String(pdf, 0, 4)).isEqualTo("%PDF");
+
+        PdfReader reader = new PdfReader(pdf);
+        String text = new PdfTextExtractor(reader).getTextFromPage(1);
+        reader.close();
+        assertThat(text).contains(serial);
+        assertThat(text).contains("진위 확인은 QR 또는 번호로");
+
+        // QR 이 실제로 <b>읽히는지</b>(디코드)는 CertificatePdfTest ⑤ 가 본다 —
+        // qrPng 가 그 패키지 안에서만 열려 있어서고, 그것을 넓히자고 제품 코드를 고칠 일은 아니다.
+        // 여기서는 <b>저장소에서 읽은 파일</b>에 그 주소가 그대로 들어 있는지를 본다.
+        // 같은 문자열이 QR 과 본문에 함께 들어가므로, 이 확인이 곧 QR 이 가리키는 곳의 확인이다.
+        String expected = base() + "/api/certificates/verify/" + serial;
+        assertThat(text).as("진위 확인 주소가 증서에 찍혀 있다").contains(expected);
+        int images = 0;
+        PdfReader again = new PdfReader(pdf);
+        for (int i = 0; i < again.getXrefSize(); i++) {
+            com.lowagie.text.pdf.PdfObject o = again.getPdfObject(i);
+            if (o != null && o.isStream() && com.lowagie.text.pdf.PdfName.IMAGE.equals(
+                    ((com.lowagie.text.pdf.PRStream) o).get(com.lowagie.text.pdf.PdfName.SUBTYPE))) {
+                images++;
+            }
+        }
+        again.close();
+        assertThat(images).as("그 주소를 담은 QR 그림이 파일 안에 있다").isEqualTo(1);
+    }
+
+    /* ---------------- ④ 지운 파일 ---------------- */
+
+    @Test
+    @DisplayName("④ 청소기가 지나간 키는 정말로 읽히지 않는다 — 큐에서 사라진 것과 파일이 사라진 것은 다르다")
+    void orphanReallyDeletesBytes() {
+        String key = "PHOTO/%d/to-delete.jpg".formatted(userId);
+        storageClient.put(key, new byte[]{1, 2, 3, 4}, "image/jpeg");
+        assertThat(storageClient.exists(key)).isTrue();
+
+        storageOrphanMapper.enqueue(key, "USER_WITHDRAWN");
+        OrphanCleaner.Counts counts = orphanCleaner.consume();
+        assertThat(counts.failed()).isZero();
+
+        assertThat(storageClient.exists(key)).as("파일이 없다").isFalse();
+        assertThatThrownBy(() -> storageClient.getBytes(key))
+                .as("읽으려 하면 실패한다 — 이것이 '지워졌다' 의 근거다")
+                .isInstanceOf(UncheckedIOException.class);
+    }
+
+    /* ---------------- ⑤ 서명 URL 의 만료 ---------------- */
+
+    @Test
+    @DisplayName("⑤ 서명 URL 에 만료 시각이 실려 있고 서명이 그 시각에 묶여 있다")
+    void presignCarriesExpiry() {
+        String key = "EBOOK/%d/expiry.pdf".formatted(userId);
+        storageClient.put(key, new byte[]{'%', 'P', 'D', 'F'}, "application/pdf");
+        keys.add(key);
+
+        long now = Instant.now().getEpochSecond();
+        String url = storageClient.presignGet(key, 600);
+        long expires = Long.parseLong(url.replaceAll(".*expires=(\\d+).*", "$1"));
+        assertThat(expires - now).as("10분짜리").isBetween(590L, 610L);
+        assertThat(url).contains("signature=");
+
+        // 만료가 다르면 서명도 달라야 한다 — 서명이 시각을 포함하지 않으면 만료가 아무 뜻이 없다.
+        String shortUrl = storageClient.presignGet(key, 1);
+        String sig = url.replaceAll(".*signature=", "");
+        String shortSig = shortUrl.replaceAll(".*signature=", "");
+        assertThat(shortSig).as("서명이 만료 시각에 묶여 있다").isNotEqualTo(sig);
+        long shortExpires = Long.parseLong(shortUrl.replaceAll(".*expires=(\\d+).*", "$1"));
+        assertThat(shortExpires).isLessThan(expires);
+
+        // ★ 여기서 멈춘다. 만료된 URL 을 "거부" 하는 주체는 이 저장소에 없다 —
+        //   presign 은 서명만 만들고, 그 서명을 검사하는 서버는 운영의 S3 다.
+        //   provider=local 로 운영하면 서명은 장식이 된다(최종 점검 F 결함으로 보고).
+    }
+
+    /* ---------------- 도구 ---------------- */
+
+    private String base() {
+        String b = ebookProperties.publicBaseUrl();
+        return b.endsWith("/") ? b.substring(0, b.length() - 1) : b;
+    }
+
+    /** 도장 한 개와 VALID 인증서 한 장을 만든다. 전자책에 사찰명과 번호가 실리는지 보려면 둘 다 있어야 한다. */
+    private String seedStampAndCertificate() {
+        Long courseSiteId = jdbc.queryForObject(
+                "SELECT course_site_id FROM course_site WHERE course_id = ? AND position = 1",
+                Long.class, COURSE_ID);
+        Long siteId = jdbc.queryForObject(
+                "SELECT site_id FROM course_site WHERE course_site_id = ?", Long.class, courseSiteId);
+        siteName = jdbc.queryForObject("SELECT name FROM site WHERE site_id = ?", String.class, siteId);
+        jdbc.update("INSERT INTO stamp (pilgrimage_id, course_site_id, site_id, verify_status, "
+                        + "verify_method, mission_verified_at, user_sentence) "
+                        + "VALUES (?, ?, ?, 'COMPLETED', 'GPS_QR', NOW(), '실재 확인용 한 줄')",
+                pilgrimageId, courseSiteId, siteId);
+
+        String serial = "PG-2026-88%04d".formatted((int) (userId % 10000));
+        jdbc.update("INSERT INTO certificate (user_id, pilgrimage_id, cert_type, status, serial_no, issued_at) "
+                + "VALUES (?, ?, 'PILGRIMAGE', 'VALID', ?, NOW())", userId, pilgrimageId, serial);
+        return serial;
+    }
+
+    private byte[] image(String format, int w, int h) throws Exception {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        g.setColor(java.awt.Color.GRAY);
+        g.fillRect(0, 0, w, h);
+        g.dispose();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(img, format, out);
+        return out.toByteArray();
+    }
+}

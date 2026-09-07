@@ -1,0 +1,78 @@
+HELP.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+# .idea 는 사람마다 다르지만, 공유 실행 구성만은 남긴다.
+# workspace.xml(개인 설정)은 .idea/.gitignore 가 따로 막고 있다.
+.idea/*
+!.idea/runConfigurations/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+# .env 는 비밀이 아닌 기본값이라 커밋한다.
+# 비밀값은 .env.local 에 두고 이 파일만 제외한다.
+.env.local
+.env.*.local
+
+### temple-stamp — 올리면 안 되는 것 (2026-09-07 · GitHub 업로드)
+# 로그. app.log 는 검증 스크립트가 읽는 실행 산출물이라 저장소에 두지 않는다.
+*.log
+logs/
+
+# 로컬 저장소. 전자책·인증서 PDF·사진 실물이 쌓이는 곳이다.
+# 기본 위치는 임시폴더라 저장소 밖이지만, STORAGE_LOCAL_DIR 를 여기로 잡는 사람이 있어 막아 둔다.
+temple-stamp-storage/
+storage/
+
+# DB 덤프. 사람의 기록이 통째로 들어 있다.
+*.sql.gz
+*.dump
+backup*.sql
+
+# 검증 실행 원문 — 요약 md 는 남기고 원문만 뺀다.
+#   verify-f-logs/ 는 newman 로그 145KB × 2 · 부하 결과 등 재현 가능한 것들이고,
+#   ch9-hardening-logs/ 도 같다. 판단의 근거는 요약 문서(md)에 옮겨 적혀 있다.
+backend/docs/audit/verify-f-logs/*
+!backend/docs/audit/verify-f-logs/*.md
+backend/docs/audit/ch9-hardening-logs/*
+!backend/docs/audit/ch9-hardening-logs/*.md
+
+# newman·검증 도구가 매번 새로 쓰는 결과물. 커밋하면 실행할 때마다 diff 가 뜬다.
+backend/docs/verify/*-result.json
+backend/docs/verify/*-result.txt
+backend/docs/verify/all-newman-result.json
+backend/docs/verify/all-sql-result.txt
+backend/docs/verify/load/deadlock-repro-*.txt
+backend/docs/verify/w-hoehyang-result.txt
+
+# 노드 산출물(컬렉션 실행에 npx 를 쓴다)
+node_modules/

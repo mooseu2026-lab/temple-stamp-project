@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.photo.PhotoMapper">
+
+    <sql id="columns">
+        photo_id, user_id, site_id, file_key, has_other_face, is_private, created_at, updated_at
+    </sql>
+
+    <!-- 같은 사찰에 다시 올리면 키를 갈아 끼운다. 사찰당 한 장이라는 규칙을 DB가 지킨다. -->
+    <insert id="upsert" parameterType="com.templestamp.photo.Photo"
+            useGeneratedKeys="true" keyProperty="photoId">
+        INSERT INTO photo (user_id, site_id, file_key, has_other_face, is_private)
+        VALUES (#{userId}, #{siteId}, #{fileKey}, #{hasOtherFace}, #{isPrivate})
+        ON DUPLICATE KEY UPDATE
+            file_key       = VALUES(file_key),
+            has_other_face = VALUES(has_other_face),
+            is_private     = VALUES(is_private)
+    </insert>
+
+    <select id="findByUserAndSite" resultType="com.templestamp.photo.Photo">
+        SELECT <include refid="columns"/>
+        FROM photo
+        WHERE user_id = #{userId} AND site_id = #{siteId}
+    </select>
+
+    <!--
+      사진 한 장 + 그 절에 쓴 문장. LEFT JOIN 조건을 ON 에 둔다 —
+      WHERE 로 내리면 문장이 아직 없는 사진이 통째로 사라진다(정리.md §6-3).
+    -->
+    <sql id="rowColumns">
+        p.site_id AS siteId,
+        COALESCE(si.name, s.name) AS siteName,
+        p.file_key AS photoKey,
+        t.body AS sentence,
+        p.has_other_face AS hasOtherFace,
+        p.is_private AS isPrivate,
+        p.updated_at AS updatedAt
+    </sql>
+
+    <sql id="rowJoins">
+        FROM photo p
+        JOIN site s ON s.site_id = p.site_id
+        LEFT JOIN site_i18n si ON si.site_id = s.site_id AND si.locale = 'ko'
+        LEFT JOIN thinkbox t ON t.user_id = p.user_id AND t.site_id = p.site_id AND t.source = 'DIRECT'
+    </sql>
+
+    <select id="findRow" resultType="com.templestamp.photo.dto.PhotoRow">
+        SELECT <include refid="rowColumns"/>
+        <include refid="rowJoins"/>
+        WHERE p.user_id = #{userId} AND p.site_id = #{siteId}
+    </select>
+
+    <select id="findAllRows" resultType="com.templestamp.photo.dto.PhotoRow">
+        SELECT <include refid="rowColumns"/>
+        <include refid="rowJoins"/>
+        WHERE p.user_id = #{userId}
+        ORDER BY p.updated_at DESC
+    </select>
+
+    <select id="findByUserId" resultType="com.templestamp.photo.Photo">
+        SELECT <include refid="columns"/>
+        FROM photo
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+
+    <delete id="deleteByUser">
+        DELETE FROM photo WHERE user_id = #{userId}
+    </delete>
+
+</mapper>

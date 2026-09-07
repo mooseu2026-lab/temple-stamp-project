@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.verse.PhraseSeenMapper">
+
+    <!-- 연타로 인한 중복은 오류가 아니다. 이미 있으면 조용히 넘어간다. -->
+    <insert id="markSeen">
+        INSERT IGNORE INTO phrase_seen (user_id, course_id, expansion_phrase_id, seen_at)
+        VALUES (#{userId}, #{courseId}, #{expansionPhraseId}, NOW())
+    </insert>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(DISTINCT expansion_phrase_id) FROM phrase_seen WHERE user_id = #{userId}
+    </select>
+
+</mapper>

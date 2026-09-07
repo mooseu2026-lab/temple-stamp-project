@@ -1,0 +1,115 @@
+package com.templestamp.stamp;
+
+import com.templestamp.admin.dto.PendingStampRow;
+import com.templestamp.global.type.AccuracyGrade;
+import com.templestamp.global.type.StampStatus;
+import com.templestamp.global.type.VerifyMethod;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
+import java.util.Optional;
+
+@Mapper
+public interface StampMapper {
+
+    int save(Stamp stamp);
+
+    Optional<Stamp> findById(@Param("stampId") Long stampId);
+
+    /**
+     * 그 자리에서 지금 손댈 수 있는 행 하나. 완료 행이 있으면 그것을,
+     * 없으면 가장 최근 행을 준다. 호출부가 상태를 보고 진행/거절을 판단한다.
+     */
+    Optional<Stamp> findLatest(@Param("pilgrimageId") Long pilgrimageId,
+                               @Param("courseSiteId") Long courseSiteId);
+
+    int countCompleted(@Param("pilgrimageId") Long pilgrimageId);
+
+    /* ---------------- 상태 전이 ---------------- */
+
+    int markGpsDone(@Param("stampId") Long stampId,
+                    @Param("siteId") Long siteId,
+                    @Param("accuracyGrade") AccuracyGrade accuracyGrade);
+
+    int markQrDone(@Param("stampId") Long stampId,
+                   @Param("missionId") Long missionId,
+                   @Param("sessionMinutes") int sessionMinutes);
+
+    int markCompleted(@Param("stampId") Long stampId,
+                      @Param("userSentence") String userSentence,
+                      @Param("photoKey") String photoKey,
+                      @Param("expansionPhraseId") Long expansionPhraseId,
+                      @Param("sessionMinutes") int sessionMinutes);
+
+    /** 심사 대기로 보낸다. 증빙 접수(EVIDENCE) 또는 이동시간 미달(TRAVEL_TIME). */
+    int markPending(@Param("stampId") Long stampId,
+                    @Param("verifyMethod") VerifyMethod verifyMethod,
+                    @Param("evidencePhotoKey") String evidencePhotoKey,
+                    @Param("pendingReason") String pendingReason,
+                    @Param("userSentence") String userSentence,
+                    @Param("expansionPhraseId") Long expansionPhraseId,
+                    @Param("siteId") Long siteId);
+
+    int markReviewed(@Param("stampId") Long stampId,
+                     @Param("status") StampStatus status,
+                     @Param("reviewedBy") Long reviewedBy,
+                     @Param("reviewNote") String reviewNote);
+
+    /** GPS 통과 후 sessionMinutes 를 넘긴 진행 중 도장을 한 번에 EXPIRED 로 넘긴다. */
+    int expireStale(@Param("sessionMinutes") int sessionMinutes);
+
+    /** 증빙 접수 — 처음부터 PENDING 으로 넣는다. EXPIRED 를 경유하지 않는다. */
+    int insertEvidence(Stamp stamp);
+
+    /**
+     * 세션이 지났을 때만 한 건을 EXPIRED 로 닫는다. 만료 판정이 SQL 안에 있어서
+     * 읽기와 쓰기 사이에 끼어들 틈이 없다. 0행 = 아직 만료가 아니다.
+     */
+    int markExpiredIfStale(@Param("stampId") Long stampId,
+                           @Param("sessionMinutes") int sessionMinutes);
+
+    /** 잠금 읽기. 2·3단계는 이것으로 시작한다(잠금 순서 pilgrimage → stamp). */
+    Optional<Stamp> findByIdForUpdate(@Param("stampId") Long stampId);
+
+    /**
+     * 하루 5개 한도. 오늘 만든 도장 중 <b>EXPIRED·REJECTED 를 뺀</b> 수다
+     * (GPS_DONE·QR_DONE·COMPLETED·PENDING 포함). COMPLETED 만 세면 PENDING 으로 빠져나간 뒤
+     * 승인되는 방식으로 한도를 넘길 수 있다.
+     */
+    int countActiveToday(@Param("userId") Long userId);
+
+    /** 예외 접수 하루 2건 한도. */
+    int countEvidenceToday(@Param("userId") Long userId);
+
+    /** Q1 ① — 이 자리에서 그 사람이 이미 받은 완료 도장. 없으면 empty. */
+    Optional<Stamp> findCompletedBySlot(@Param("userId") Long userId,
+                                        @Param("courseSiteId") Long courseSiteId);
+
+    /* ---------------- 이동시간 검증 ---------------- */
+
+    /** 같은 순례에서 직전에 완료한 도장의 사찰. 없으면 첫 도장이다. */
+    Optional<Long> findLastCompletedSiteId(@Param("pilgrimageId") Long pilgrimageId);
+
+    /** 직전 완료 시각으로부터 지금까지 흐른 분. 직전 도장이 없으면 비어 있다. */
+    Optional<Integer> findMinutesSinceLastCompleted(@Param("pilgrimageId") Long pilgrimageId);
+
+    /* ---------------- 관리자 ---------------- */
+
+    List<PendingStampRow> findPending(@Param("offset") int offset, @Param("limit") int limit);
+
+    long countPending();
+
+    /* ---------------- 보상 심사(AuditScorer) 근거 ---------------- */
+
+    int countByUserAndMethod(@Param("userId") Long userId,
+                             @Param("verifyMethod") VerifyMethod verifyMethod);
+
+    int countCompletedByUser(@Param("userId") Long userId);
+
+    /** 같은 순례에서 이웃한 완료 도장 사이 최소 간격(초). 도장이 1건뿐이면 비어 있다. */
+    Optional<Long> findMinCompletionGapSeconds(@Param("pilgrimageId") Long pilgrimageId);
+
+    /** 이동시간 미달로 보류된 이력 수. 이상 활동 신호 중 하나다. */
+    int countTravelTimeFlags(@Param("userId") Long userId);
+}

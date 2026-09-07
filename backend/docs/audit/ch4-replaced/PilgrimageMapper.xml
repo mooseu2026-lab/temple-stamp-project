@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.pilgrimage.PilgrimageMapper">
+
+    <sql id="columns">
+        pilgrimage_id, user_id, course_id, status, started_at, completed_at
+    </sql>
+
+    <insert id="save" parameterType="com.templestamp.pilgrimage.Pilgrimage"
+            useGeneratedKeys="true" keyProperty="pilgrimageId">
+        INSERT INTO pilgrimage (user_id, course_id, status, started_at)
+        VALUES (#{userId}, #{courseId}, 'IN_PROGRESS', NOW())
+    </insert>
+
+    <select id="findById" resultType="com.templestamp.pilgrimage.Pilgrimage">
+        SELECT <include refid="columns"/> FROM pilgrimage WHERE pilgrimage_id = #{pilgrimageId}
+    </select>
+
+    <select id="findByUserAndCourse" resultType="com.templestamp.pilgrimage.Pilgrimage">
+        SELECT <include refid="columns"/>
+        FROM pilgrimage
+        WHERE user_id = #{userId} AND course_id = #{courseId}
+    </select>
+
+    <select id="findByUserId" resultType="com.templestamp.pilgrimage.Pilgrimage">
+        SELECT <include refid="columns"/>
+        FROM pilgrimage
+        WHERE user_id = #{userId}
+        ORDER BY started_at DESC
+    </select>
+
+    <update id="markCompleted">
+        UPDATE pilgrimage
+        SET status       = 'COMPLETED',
+            completed_at = COALESCE(completed_at, NOW())
+        WHERE pilgrimage_id = #{pilgrimageId}
+    </update>
+
+    <!-- 심사 반려로 완주가 깨졌을 때. 완료 시각도 같이 비운다. -->
+    <update id="markInProgress">
+        UPDATE pilgrimage
+        SET status       = 'IN_PROGRESS',
+            completed_at = NULL
+        WHERE pilgrimage_id = #{pilgrimageId}
+    </update>
+
+    <!--
+      여권은 '시작한 코스' 기준이다. 시작하지 않은 코스에는 칸이 생기지 않는다.
+      course_site 를 왼쪽에 두고 stamp 를 LEFT JOIN 해서 빈 칸도 그대로 내려보낸다.
+      완료된 도장만 붙이는 이유 — 여권은 "찍혔는가" 만 보여 주는 화면이고, 진행 중이거나
+      만료된 시도 이력까지 칸에 물리면 같은 자리에 여러 줄이 생긴다.
+      (uk_stamp_completed 덕분에 완료 도장은 자리당 최대 1건이라 행이 늘지 않는다)
+    -->
+    <select id="findPassportSlots" resultType="com.templestamp.pilgrimage.dto.PassportSlotRow">
+        SELECT r.region_id,
+               r.name                 AS region_name,
+               c.course_id,
+               c.name                 AS course_name,
+               p.pilgrimage_id,
+               p.status               AS pilgrimage_status,
+               cs.position,
+               cs.course_site_id,
+               COALESCE(i18n.name, s.name) AS site_name,
+               st.stamp_id,
+               st.mission_verified_at AS completed_at,
+               st.user_sentence,
+               st.photo_key
+        FROM pilgrimage p
+                 JOIN course c ON c.course_id = p.course_id
+                 JOIN region r ON r.region_id = c.region_id
+                 JOIN course_site cs ON cs.course_id = c.course_id
+                 JOIN site s ON s.site_id = cs.site_id
+                 LEFT JOIN site_i18n i18n ON i18n.site_id = s.site_id AND i18n.locale = 'ko'
+                 LEFT JOIN stamp st ON st.pilgrimage_id = p.pilgrimage_id
+                                   AND st.completed_course_site_id = cs.course_site_id
+        WHERE p.user_id = #{userId}
+        ORDER BY r.sort_no, r.region_id, c.sort_no, c.course_id, cs.position
+    </select>
+
+    <select id="countCompletedCourses" resultType="int">
+        SELECT COUNT(*) FROM pilgrimage WHERE user_id = #{userId} AND status = 'COMPLETED'
+    </select>
+
+    <select id="countCompletedStamps" resultType="int">
+        SELECT COUNT(*)
+        FROM stamp st
+                 JOIN pilgrimage p ON p.pilgrimage_id = st.pilgrimage_id
+        WHERE p.user_id = #{userId}
+          AND st.verify_status = 'COMPLETED'
+    </select>
+
+</mapper>

@@ -1,0 +1,58 @@
+package com.templestamp.ebook.dto;
+
+import java.time.LocalDateTime;
+
+/**
+ * 사용자에게 자기 신청 내역을 내려주는 DTO Record입니다.
+ * 연락처와 주소를 마스킹하고, 취소 가능 여부를 계산해 함께 줍니다.
+ * 마스킹 메서드를 private static 으로 이 안에 두는 이유 —
+ * 로직이 여러 군데로 퍼지면 한 곳만 고치고 다른 곳을 빠뜨리기 때문(06_DTO 방침).
+ * [사용 위치] PrintOrderService 가 PrintOrderRow → 변환 → Controller 반환
+ */
+public record PrintOrderResponse(
+        Long printOrderId,
+        String ebookType,
+        Integer quantity,
+        String recipientName,
+        String recipientPhone,        // 마스킹: 010-****-5678
+        String address,               // 마스킹: 앞 두 어절만 노출
+        String status,
+        String trackingNo,            // SHIPPED 전이면 null
+        boolean cancelable,           // REQUESTED 상태에서만 true — 계산값
+        LocalDateTime requestedAt
+) {
+    public static PrintOrderResponse from(PrintOrderRow row) {
+        return new PrintOrderResponse(
+                row.getPrintOrderId(),
+                row.getEbookType(),
+                row.getQuantity(),
+                row.getRecipientName(),
+                maskPhone(row.getRecipientPhone()),
+                maskAddress(row.getAddress()),
+                row.getStatus(),
+                row.getTrackingNo(),
+                "REQUESTED".equals(row.getStatus()),
+                row.getRequestedAt());
+    }
+
+    /** 010-****-5678 — 가운데 자리만 가림. 하이픈 유무와 무관하게 동작 */
+    public static String maskPhone(String phone) {
+        if (phone == null || phone.length() < 8) {
+            return "*";
+        }
+        String digits = phone.replace("-", "");
+        return digits.substring(0, 3) + "-****-" + digits.substring(digits.length() - 4);
+    }
+
+    /** 공백 기준 앞 두 어절(시·구 수준)까지만 노출하고 뒤는 *** */
+    public static String maskAddress(String address) {
+        if (address == null || address.isBlank()) {
+            return "*";
+        }
+        String[] parts = address.trim().split("\\s+");
+        if (parts.length <= 2) {
+            return parts[0] + " ***";
+        }
+        return parts[0] + " " + parts[1] + " ***";
+    }
+}

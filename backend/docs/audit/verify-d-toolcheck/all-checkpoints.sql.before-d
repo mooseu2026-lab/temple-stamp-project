@@ -1,0 +1,75 @@
+USE temple_stamp_project;
+-- A07: 잠금 계정 — login_fail_count 5, locked_until 미래                                 기대: 5, > NOW()
+SELECT login_fail_count, locked_until > NOW() AS locked FROM users WHERE email LIKE 'lock-%@test.com' ORDER BY user_id DESC LIMIT 1;
+-- A12: 재사용 탐지 후 그 사용자의 refresh_token 전부 revoked                            기대: 0
+SELECT COUNT(*) AS alive FROM refresh_token rt JOIN users u ON u.user_id = rt.user_id
+ WHERE u.email LIKE 'reg-%@test.com' AND rt.revoked_at IS NULL AND rt.expires_at > NOW()
+   AND rt.created_at < (SELECT MAX(created_at) FROM refresh_token WHERE user_id = rt.user_id);
+-- M09~M12: 미리보기 seen 미기록                                                          기대: 0
+SELECT COUNT(*) AS preview_seen FROM phrase_seen ps JOIN users u ON u.user_id = ps.user_id WHERE u.email LIKE 'reg-%@test.com';
+-- U06: 같은 버전 재동의 1행                                                              기대: 1
+SELECT COUNT(*) FROM user_agreement ua JOIN users u ON u.user_id = ua.user_id WHERE u.email LIKE 'reg-%@test.com' AND agreement_type='LOCATION_SERVICE';
+-- S03: i18n UPSERT — 검증사찰1 의 행 수                                                  기대: 2 (ko, en)
+SELECT COUNT(*) FROM site_i18n WHERE site_id = (SELECT site_id FROM site WHERE name='검증사찰1' ORDER BY site_id DESC LIMIT 1);
+-- S07: 뷰포인트 두 번 → 1행                                                              기대: 1
+SELECT COUNT(*) FROM site_viewpoint WHERE site_id = (SELECT site_id FROM site WHERE name='검증사찰1' ORDER BY site_id DESC LIMIT 1) AND sort_no=1;
+-- C07: 이동시간 두 번 → 20행                                                             기대: 20
+SELECT COUNT(*) FROM site_distance WHERE site_a_id IN (SELECT site_id FROM site WHERE name LIKE '검증사찰%');
+-- P03·P04: 멱등 시작 — 두 번 눌러도 순례는 한 건                                        기대: 1
+SELECT COUNT(*) AS pilgrimages FROM pilgrimage p JOIN users u ON u.user_id = p.user_id
+ WHERE u.email LIKE 'reg-%@test.com' AND p.course_id = 1;
+-- C08 정리 확인: 검증 사찰·코스 INACTIVE                                                  기대: 모두 INACTIVE
+SELECT name, status FROM site WHERE name LIKE '검증사찰%' UNION ALL SELECT name, status FROM course WHERE name='검증코스';
+-- S10·S10b: 참배 요소 UPSERT — 같은 코드를 두 번 보내도 site_element 는 2행(MAIN_HALL·ILJUMUN)  기대: 2
+SELECT COUNT(*) AS site_elements FROM site_element
+ WHERE site_id = (SELECT site_id FROM site WHERE name='검증사찰1' ORDER BY site_id DESC LIMIT 1);
+-- ⑪ V04·V05: 같은 사찰에 두 번 저장해도 사진 1행·문장 1행                                기대: 1 / 1
+SELECT
+  (SELECT COUNT(*) FROM photo p JOIN users u ON u.user_id = p.user_id
+    WHERE u.email LIKE 'reg-%@test.com')                                        AS photo_rows,
+  (SELECT COUNT(*) FROM thinkbox t JOIN users u ON u.user_id = t.user_id
+    WHERE u.email LIKE 'reg-%@test.com' AND t.source = 'DIRECT' AND t.site_id IS NOT NULL) AS direct_rows,
+  (SELECT IFNULL(MAX(t.is_edited), 0) FROM thinkbox t JOIN users u ON u.user_id = t.user_id
+    WHERE u.email LIKE 'reg-%@test.com' AND t.source = 'DIRECT' AND t.site_id IS NOT NULL) AS direct_edited;
+
+-- ⑫ W: 완주·인증서 (챕터 7)                                                            기대: 아래 주석대로
+--    W22 로 마지막 도장을 다시 반려한 상태로 끝난다 → 완주 0 · 유효 인증서 0 · 회수 3장
+SELECT
+  (SELECT COUNT(*) FROM pilgrimage p JOIN users u ON u.user_id = p.user_id
+    WHERE u.email = 'w-user@test.com' AND p.status = 'COMPLETED')            AS w_completed_courses,
+  (SELECT COUNT(*) FROM certificate c JOIN users u ON u.user_id = c.user_id
+    WHERE u.email = 'w-user@test.com' AND c.status = 'VALID')                AS w_cert_valid,
+  (SELECT COUNT(*) FROM certificate c JOIN users u ON u.user_id = c.user_id
+    WHERE u.email = 'w-user@test.com' AND c.status = 'REVOKED')              AS w_cert_revoked;
+
+-- ⑬ W: 보상 상태별 · 사람이 볼 것                                                       기대: PAID 1 · needs_review 1
+SELECT ur.status, COUNT(*) AS cnt, SUM(ur.needs_review) AS needs_review
+  FROM user_reward ur JOIN users u ON u.user_id = ur.user_id
+ WHERE u.email = 'w-user@test.com'
+ GROUP BY ur.status ORDER BY ur.status;
+
+-- ⑭ W: 인증서 번호는 절대 겹치지 않는다                                                기대: 0
+SELECT COUNT(*) - COUNT(DISTINCT serial_no) AS duplicated_serials FROM certificate;
+
+-- ⑮ W: 회향 준비 SQL 원복 확인 — 시드 코스 12개는 다시 DRAFT                            기대: 0
+SELECT COUNT(*) AS courses_not_restored FROM course WHERE course_id BETWEEN 37 AND 48 AND status <> 'DRAFT';
+
+-- ⑯ W26: 배송 정보는 별도 표에만 있다 (챕터 7 보강 B-4)                                   기대: claim_rows 1
+--     보상 목록 응답에 주소가 없는 것은 컬렉션 W26b 가 본다. 여기서는 '어딘가에는 남았는지' 를 본다.
+SELECT COUNT(*) AS claim_rows
+  FROM reward_claim rc
+       JOIN user_reward ur ON ur.user_reward_id = rc.user_reward_id
+       JOIN users u ON u.user_id = ur.user_id
+ WHERE u.email = 'w-user@test.com';
+
+-- ⑰ W26: 배송 정보가 본체(user_reward)로 새지 않았는지                                    기대: 0
+SELECT COUNT(*) AS address_columns_in_user_reward
+  FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = 'temple_stamp_project' AND TABLE_NAME = 'user_reward'
+   AND COLUMN_NAME IN ('address', 'recipient_name', 'phone', 'memo');
+
+-- ⑱ W25: 관리자 회수는 사유 코드를 남긴다                                                  기대: ADMIN 1건 이상
+SELECT revoke_reason, COUNT(*) AS cnt
+  FROM certificate c JOIN users u ON u.user_id = c.user_id
+ WHERE u.email = 'w-user@test.com' AND c.status = 'REVOKED'
+ GROUP BY revoke_reason ORDER BY revoke_reason;

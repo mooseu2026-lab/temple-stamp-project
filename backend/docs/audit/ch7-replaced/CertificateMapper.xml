@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.certificate.CertificateMapper">
+
+    <sql id="columns">
+        certificate_id, user_id, pilgrimage_id, cert_type, serial_no, issued_at, file_key
+    </sql>
+
+    <!-- 회향 인증서는 pilgrimage_id 가 NULL 이라 코스·권역이 비어 있다. LEFT JOIN 으로 받는다. -->
+    <sql id="rowSelect">
+        SELECT cert.certificate_id,
+               cert.user_id,
+               u.nickname,
+               cert.pilgrimage_id,
+               c.course_id,
+               c.name AS course_name,
+               r.name AS region_name,
+               cert.cert_type,
+               cert.serial_no,
+               cert.issued_at,
+               cert.file_key
+        FROM certificate cert
+                 JOIN users u ON u.user_id = cert.user_id
+                 LEFT JOIN pilgrimage p ON p.pilgrimage_id = cert.pilgrimage_id
+                 LEFT JOIN course c ON c.course_id = p.course_id
+                 LEFT JOIN region r ON r.region_id = c.region_id
+    </sql>
+
+    <insert id="save" parameterType="com.templestamp.certificate.Certificate"
+            useGeneratedKeys="true" keyProperty="certificateId">
+        INSERT INTO certificate (user_id, pilgrimage_id, cert_type, serial_no, issued_at)
+        VALUES (#{userId}, #{pilgrimageId}, #{certType}, #{serialNo}, NOW())
+    </insert>
+
+    <select id="findByPilgrimageId" resultType="com.templestamp.certificate.Certificate">
+        SELECT <include refid="columns"/> FROM certificate WHERE pilgrimage_id = #{pilgrimageId}
+    </select>
+
+    <select id="findByUserAndType" resultType="com.templestamp.certificate.Certificate">
+        SELECT <include refid="columns"/>
+        FROM certificate
+        WHERE user_id = #{userId} AND cert_type = #{certType}
+        ORDER BY certificate_id
+        LIMIT 1
+    </select>
+
+    <select id="findRowBySerial" resultType="com.templestamp.certificate.dto.CertificateRow">
+        <include refid="rowSelect"/>
+        WHERE cert.serial_no = #{serialNo}
+    </select>
+
+    <select id="findRowsByUserId" resultType="com.templestamp.certificate.dto.CertificateRow">
+        <include refid="rowSelect"/>
+        WHERE cert.user_id = #{userId}
+        ORDER BY cert.issued_at DESC
+    </select>
+
+    <select id="countByTypeAndYear" resultType="int">
+        SELECT COUNT(*)
+        FROM certificate
+        WHERE cert_type = #{certType}
+          AND YEAR(issued_at) = #{year}
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM certificate WHERE user_id = #{userId}
+    </select>
+
+    <update id="updateFileKey">
+        UPDATE certificate SET file_key = #{fileKey} WHERE certificate_id = #{certificateId}
+    </update>
+
+    <delete id="deleteByPilgrimageId">
+        DELETE FROM certificate WHERE pilgrimage_id = #{pilgrimageId}
+    </delete>
+
+</mapper>

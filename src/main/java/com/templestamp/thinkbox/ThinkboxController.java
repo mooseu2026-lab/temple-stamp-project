@@ -1,0 +1,83 @@
+package com.templestamp.thinkbox;
+
+import com.templestamp.global.response.ApiResponse;
+import com.templestamp.global.response.PageResponse;
+import com.templestamp.global.security.AuthenticatedUser;
+import com.templestamp.thinkbox.dto.ThinkboxCreateRequest;
+import com.templestamp.thinkbox.dto.ThinkboxResponse;
+import com.templestamp.thinkbox.dto.ThinkboxUpdateRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import jakarta.validation.constraints.Pattern;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/api/thinkbox")
+@RequiredArgsConstructor
+public class ThinkboxController {
+
+    private final ThinkboxService thinkboxService;
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<Long> create(@AuthenticationPrincipal AuthenticatedUser user,
+                                    @Valid @RequestBody ThinkboxCreateRequest request) {
+        return ApiResponse.ok(thinkboxService.create(user.userId(), request));
+    }
+
+    /**
+     * 여섯 달 전 오늘 쓴 글. <b>없는 것이 정상</b>이라 200 + {@code data: null} 이다 — 404 가 아니다.
+     * <p>
+     * {@code /{thinkboxId}} 형태의 매핑보다 <b>먼저</b> 선언한다. 아래에 두면 "flashback" 이
+     * 경로 변수로 잡혀 타입 변환에서 400 이 난다.
+     */
+    @GetMapping("/flashback")
+    public ApiResponse<ThinkboxResponse> flashback(@AuthenticationPrincipal AuthenticatedUser user) {
+        return ApiResponse.ok(thinkboxService.flashback(user.userId()));
+    }
+
+    @GetMapping
+    public ApiResponse<PageResponse<ThinkboxResponse>> getMine(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "date")
+            @Pattern(regexp = "^(date|course|site)$", message = "정렬은 date, course, site 중 하나여야 합니다.")
+            String sort,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ApiResponse.ok(thinkboxService.getMine(user.userId(), sort, page, size));
+    }
+
+    @PatchMapping("/{thinkboxId}")
+    public ApiResponse<Void> update(@AuthenticationPrincipal AuthenticatedUser user,
+                                    @PathVariable Long thinkboxId,
+                                    @Valid @RequestBody ThinkboxUpdateRequest request) {
+        thinkboxService.update(user.userId(), thinkboxId, request);
+        return ApiResponse.ok();
+    }
+
+    /**
+     * 삭제는 <b>204 · 본문 없음</b>이다. DELETE 다섯 중 둘만 204 였고 셋은 200 + 봉투였다 —
+     * 같은 행위가 자리마다 다른 답을 내면 프론트가 자리마다 다르게 분기한다(감사 G STEP 5).
+     */
+    @DeleteMapping("/{thinkboxId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@AuthenticationPrincipal AuthenticatedUser user,
+                       @PathVariable Long thinkboxId) {
+        thinkboxService.delete(user.userId(), thinkboxId);
+    }
+}

@@ -1,0 +1,53 @@
+package com.templestamp.certificate;
+
+import com.templestamp.certificate.dto.CertificateRow;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
+import java.util.Optional;
+
+@Mapper
+public interface CertificateMapper {
+
+    int save(Certificate certificate);
+
+    /** 유효한 것만 찾는다. 회수된 옛 인증서가 남아 있어도 재발행을 막지 않아야 한다. */
+    Optional<Certificate> findValidByPilgrimageId(@Param("pilgrimageId") Long pilgrimageId);
+
+    Optional<Certificate> findValidByUserAndType(@Param("userId") Long userId,
+                                                 @Param("certType") String certType);
+
+    Optional<CertificateRow> findRowBySerial(@Param("serialNo") String serialNo);
+
+    Optional<Certificate> findById(@Param("certificateId") Long certificateId);
+
+    List<CertificateRow> findRowsByUserId(@Param("userId") Long userId);
+
+    /** 1장 조회(챕터 9 §3). 목록과 같은 모양이라 프론트가 두 벌을 만들지 않는다. */
+    Optional<CertificateRow> findRowById(@Param("certificateId") Long certificateId);
+
+    /** 챕터 9(전자책·인쇄)에서 PDF 를 만든 뒤 그 키를 적는다. 지금은 부르는 곳이 없어도 지우지 않는다. */
+    int updateFileKey(@Param("certificateId") Long certificateId, @Param("fileKey") String fileKey);
+
+    /**
+     * 완주가 깨졌을 때 그 완주의 인증서를 회수한다. 지우지 않는다(§3-2).
+     * 이미 REVOKED 면 0을 돌려준다 — 연쇄가 여러 번 돌아도 회수 시각이 덮이지 않는다.
+     */
+    int revokeByPilgrimageId(@Param("pilgrimageId") Long pilgrimageId,
+                             @Param("reason") String reason);
+
+    /**
+     * 관리자 회수. VALID 일 때만 바뀐다 — 이미 회수된 것을 다시 회수하면 0행이고,
+     * 그때는 호출부가 409 를 던진다(연쇄와 달리 사람이 누른 것이라 조용히 넘기지 않는다).
+     */
+    int revokeById(@Param("certificateId") Long certificateId, @Param("reason") String reason);
+
+    /** 탈퇴 — 그 사람의 유효한 인증서를 전부 회수한다(사유 USER_WITHDRAWN). */
+    int revokeAllByUser(@Param("userId") Long userId, @Param("reason") String reason);
+
+    /** 회향 조건이 깨졌을 때. 회향 인증서는 순례에 매이지 않아 사용자·종류로 찾는다. */
+    int revokeByUserAndType(@Param("userId") Long userId,
+                            @Param("certType") String certType,
+                            @Param("reason") String reason);
+}

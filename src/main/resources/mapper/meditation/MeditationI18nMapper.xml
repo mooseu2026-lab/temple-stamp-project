@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.meditation.MeditationI18nMapper">
+
+    <select id="findByMeditationIdAndLocale" resultType="com.templestamp.meditation.MeditationI18n">
+        SELECT meditation_i18n_id, meditation_id, locale, title, script, audio_key
+        FROM meditation_i18n
+        WHERE meditation_id = #{meditationId} AND locale = #{locale}
+    </select>
+
+</mapper>

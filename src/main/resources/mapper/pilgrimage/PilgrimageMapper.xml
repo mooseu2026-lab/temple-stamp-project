@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.pilgrimage.PilgrimageMapper">
+
+  <select id="findByUserAndCourse" resultType="com.templestamp.pilgrimage.Pilgrimage">
+    SELECT pilgrimage_id, user_id, course_id, status, started_at, completed_at
+      FROM pilgrimage WHERE user_id = #{userId} AND course_id = #{courseId}
+  </select>
+
+  <select id="findById" resultType="com.templestamp.pilgrimage.Pilgrimage">
+    SELECT pilgrimage_id, user_id, course_id, status, started_at, completed_at FROM pilgrimage WHERE pilgrimage_id = #{pilgrimageId}
+  </select>
+
+  <!-- 경쟁에서 진 쪽만 쓴다. FOR UPDATE 는 스냅샷이 아니라 최신 커밋본을 읽는다(잠금 읽기). -->
+  <select id="findByUserAndCourseForUpdate" resultType="com.templestamp.pilgrimage.Pilgrimage">
+    SELECT pilgrimage_id, user_id, course_id, status, started_at, completed_at
+      FROM pilgrimage WHERE user_id = #{userId} AND course_id = #{courseId} FOR UPDATE
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="pilgrimageId">
+    INSERT INTO pilgrimage (user_id, course_id) VALUES (#{userId}, #{courseId})
+    <!-- status·started_at 은 DB DEFAULT. uk_pilgrimage(user_id, course_id) 위반은 DuplicateKeyException → Service 가 잡아 기존 행 재조회 -->
+  </insert>
+
+  <select id="countCompletedStamps" resultType="int">
+    SELECT COUNT(*) FROM stamp WHERE pilgrimage_id = #{pilgrimageId} AND verify_status = 'COMPLETED'
+  </select>
+
+  <!-- 여권 한 방 조회. 권역→코스(ACTIVE)→자리→사찰, 여기에 "내 순례" 와 "완료 도장" 을 LEFT JOIN.
+       ★ st 의 조인 키가 completed_course_site_id(생성 컬럼) — COMPLETED 인 행에만 값이 있어 진행 중·만료·보류 도장은 자동으로 빠진다.
+       ★ p 의 조건(user_id)이 ON 에 있다 — WHERE 로 내리면 미시작 코스가 통째로 사라진다(가는 법 R1 과 같은 함정) -->
+  <select id="findPassportSlots" resultType="com.templestamp.pilgrimage.dto.PassportSlotRow">
+    SELECT r.region_id            AS regionId,
+           r.name                 AS regionName,
+           c.course_id            AS courseId,
+           c.name                 AS courseName,
+           p.pilgrimage_id        AS pilgrimageId,
+           p.status               AS pilgrimageStatus,
+           cs.position            AS position,
+           cs.course_site_id      AS courseSiteId,
+           COALESCE(si.name, s.name) AS siteName,
+           st.stamp_id            AS stampId,
+           st.mission_verified_at AS completedAt,
+           st.user_sentence       AS userSentence,
+           st.photo_key           AS photoKey,
+           ms.title               AS extTitle,
+           ms.body                AS extBody,
+           ms.variant_no          AS extVariantNo
+      FROM region r
+      JOIN course      c  ON c.region_id  = r.region_id AND c.status = 'ACTIVE'
+      JOIN course_site cs ON cs.course_id = c.course_id
+      JOIN site        s  ON s.site_id    = cs.site_id
+      LEFT JOIN site_i18n si ON si.site_id = s.site_id AND si.locale = #{locale}
+      LEFT JOIN pilgrimage p ON p.course_id = c.course_id AND p.user_id = #{userId}
+      LEFT JOIN stamp st ON st.pilgrimage_id = p.pilgrimage_id AND st.completed_course_site_id = cs.course_site_id
+      <!-- 퇴역했어도 그대로 싣는다 — 그 도장이 발행되던 날의 문구다(챕터 8 §3-3) -->
+      LEFT JOIN manuscript ms ON ms.manuscript_id = st.ext_manuscript_id
+     ORDER BY r.sort_no, r.region_id, c.sort_no, c.course_id, cs.position
+  </select>
+
+  <!-- 이하 세 개는 교재 [기본 40] 에 없다. 챕터 7 CompletionService 가 쓰므로 원본에서 그대로 옮겼다. -->
+  <update id="markCompleted">
+    UPDATE pilgrimage SET status = 'COMPLETED', completed_at = COALESCE(completed_at, NOW()) WHERE pilgrimage_id = #{pilgrimageId}
+  </update>
+
+  <update id="markInProgress">
+    UPDATE pilgrimage SET status = 'IN_PROGRESS', completed_at = NULL WHERE pilgrimage_id = #{pilgrimageId}
+  </update>
+
+  <select id="findByUserId" resultType="com.templestamp.pilgrimage.Pilgrimage">
+    SELECT pilgrimage_id, user_id, course_id, status, started_at, completed_at
+    FROM pilgrimage
+    WHERE user_id = #{userId}
+    ORDER BY pilgrimage_id
+  </select>
+
+  <select id="findUserIdsWithPilgrimage" resultType="long">
+    SELECT DISTINCT user_id FROM pilgrimage ORDER BY user_id
+  </select>
+
+  <select id="countCompletedCourses" resultType="int">
+    SELECT COUNT(*) FROM pilgrimage WHERE user_id = #{userId} AND status = 'COMPLETED'
+  </select>
+
+</mapper>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.site.SiteBadgeMapper">
+
+    <select id="findBySiteId" resultType="com.templestamp.site.SiteBadge">
+        SELECT site_badge_id, site_id, badge_type, description
+        FROM site_badge
+        WHERE site_id = #{siteId}
+        ORDER BY badge_type
+    </select>
+
+
+    <!-- [RULE] 삭제 후 재삽입 금지. uk_site_badge(site_id, badge_type) 가 갱신 기준 -->
+    <insert id="upsert">
+        INSERT INTO site_badge (site_id, badge_type, description)
+        VALUES (#{siteId}, #{badgeType}, #{description})
+        ON DUPLICATE KEY UPDATE description = VALUES(description)
+    </insert>
+
+</mapper>

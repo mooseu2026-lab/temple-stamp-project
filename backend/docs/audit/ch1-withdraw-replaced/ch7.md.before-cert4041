@@ -1,0 +1,333 @@
+# 챕터 7 — 완주 재집계 · 인증서 · 보상 · 회향 (정본)
+
+작성 2026-09-06 · 전제: 챕터 0~6 완료 + 전체 점검 C 통과(JUnit 151 · newman 265요청/1182단언) · 이 문서가 챕터 7의 **정본**이다.
+
+---
+
+## 0. 이 챕터의 성격
+
+챕터 7 코드는 저장소에 **이미 있다**(CompletionService · CertificateService · RewardService · 관련 컨트롤러/매퍼). 없는 것은 **종단 테스트**와 **규칙 대조**다. 따라서 이 챕터는 "새로 짓기"가 아니라 아래 순서다.
+
+1. 이 문서의 규칙(§2~§5)과 저장소 코드를 한 줄씩 대조 → 교체/삭제/유지 판정
+2. 판정 결과대로 고치되, 원본은 `backend/docs/audit/ch7-replaced/`에 보관
+3. 확인포인트 폴더 **W**(§7)를 newman에 추가하고 JUnit 3개를 채워 종단 검증
+4. `정리.md` §1·§4·§5·§6·§7 갱신
+
+**절대 규칙(변경 없음)**
+- 보안·개인정보·동의·권한 검사는 이 문서에 없어도 제거하지 않는다 → "교재 누락"으로 보고.
+- `ErrorCode(status, code, message)` 생성자 순서 고정. 번호는 바꾸지 않고 던질 때 메시지 오버라이드만 허용.
+- 명세 §7에 있는 코드는 신설이 아니라 구현 누락 → 추가 가능. 명세에 없는 코드는 신설 금지.
+- **엔드포인트 신설 없음.** 이 챕터의 엔드포인트는 `backend/docs/audit/endpoints.md`(73개)에 이미 있는 것만 쓴다. §6의 표는 "기능 ↔ 경로" 대조표이며, 실제 경로가 다르면 endpoints.md가 이기고 보고서에 대조표를 넣는다.
+- 완주 수·진행률은 저장하지 않고 COUNT. 진행률은 `PilgrimageService.progressOf` 한 곳(챕터 4 원칙).
+- 서버는 사용자 좌표를 받지 않는다(원칙①). 이 챕터는 좌표를 만질 일이 없다 — 만지고 있으면 그 자체가 결함.
+
+---
+
+## 1. 낱말 사전
+
+| 낱말 | 뜻 |
+|---|---|
+| 코스 완주 | 한 코스(라인)의 슬롯 5개 전부에 **살아 있는 발행 도장**(status = ISSUED 계열, EXPIRED·REJECTED 제외)이 있는 상태 |
+| 완주 기록 | `completion` 표의 한 행. "이 사용자가 이 코스를 언제 완주했다"는 사실. 인증서·보상의 **근거 행** |
+| 재집계(recount) | 도장 상태를 다시 세어 완주 기록을 **있어야 할 모양으로 맞추는** 멱등 작업. 있어야 하는데 없으면 만들고, 있는데 근거가 사라졌으면 취소 |
+| 중간본 | 코스 **3개** 완주 시점에 나오는 중간 인증서(PG 계열) |
+| 회향(回向) | ACTIVE 코스 **전부** 완주 + 완주 코스 수 ≥ `temple.hoehyang-min-courses`(=12) 일 때 성립. 최종 인증서(HH 계열) |
+| PG 번호 | 코스/중간본 인증서 번호 접두 `PG` |
+| HH 번호 | 회향 인증서 번호 접두 `HH` |
+| 회수(revoke) | 이미 발행된 인증서를 무효로 표시(행 삭제 아님). 상태 `REVOKED` |
+| 적립(grant) | 완주 사건이 보상 규칙표에 맞으면 `reward` 행을 `GRANTED`로 만드는 것 |
+| claimable | 사용자가 **지금 수령 신청을 눌러도 되는가**. 서버가 매번 다시 계산하며 응답에 실어 보내는 값 |
+| 수령 신청(claim) | 실물(PHYSICAL) 보상을 받겠다고 배송 정보를 내는 것 |
+| 심사 | 관리자가 수령 신청을 승인(→ 배송)하거나 반려하는 것 |
+
+---
+
+## 2. 완주 · 재집계 규칙 (`CompletionService`)
+
+### 2-1 완주 판정은 계산이다
+
+```
+courseCompleted(userId, courseId)
+  = COUNT(슬롯 5개 중 살아 있는 발행 도장이 있는 슬롯) == 5
+```
+
+- "살아 있는 발행 도장" = 챕터 5 정의 그대로(ISSUED, EXPIRED·REJECTED 제외). 승인 대기(PENDING 계열)는 **아직 아님**.
+- 한 슬롯에 도장은 1개(챕터 4). 후보 사찰이 여러 곳이어도 슬롯 기준으로 센다.
+- 이 계산은 `PilgrimageService.progressOf`가 이미 갖고 있는 슬롯별 도장 정보를 **재사용**한다. 별도 SQL로 다시 세지 않는다(두 곳이 다르게 세면 진행률 100%인데 완주 아님 같은 모순이 난다).
+
+### 2-2 완주 기록은 사실의 사본이다
+
+| 상황 | 해야 할 일 |
+|---|---|
+| 5/5인데 `completion` 행 없음 | 행 생성(`completed_at` = 마지막 도장의 발행 시각, `status = COMPLETED`) |
+| 5/5이고 행 있음 | 아무것도 안 함(멱등) |
+| 5/5 아닌데 행이 COMPLETED | 행을 `CANCELED`로(삭제 아님) + 연쇄(§2-4) |
+| 5/5 아니고 행 없음 | 아무것도 안 함 |
+
+- `completion`에 유니크 `(user_id, course_id)`. 없으면 ALTER 후보로 보고(스키마 변경은 `정리.md` §5 ALTER 목록에 추가, 이 챕터에서 직접 실행하지 않음).
+- 완주 행을 만들 때 **같은 트랜잭션**에서 §3(인증서)·§4(보상)를 호출한다. 하나라도 실패하면 완주 행도 롤백.
+
+### 2-3 재집계가 불리는 세 곳
+
+| 호출처 | 언제 | 범위 |
+|---|---|---|
+| ① 도장 승인 직후 | `StampService`가 도장을 ISSUED로 바꾼 뒤 | 그 사용자·그 코스 |
+| ② 도장 반려/무효 직후 | 관리자 반려, 회전으로 무효 등 ISSUED → 다른 상태 | 그 사용자·그 코스 |
+| ③ 관리자 수동 | endpoints.md의 재집계 API | 사용자 1명 전체 코스, 또는 전체 사용자(배치) |
+
+①②는 도장 트랜잭션이 **끝난 뒤** 별도 트랜잭션으로 부른다(`REQUIRES_NEW` 또는 `@TransactionalEventListener(AFTER_COMMIT)`). 챕터 5 함정(§6-7)과 같은 이유 — 도장 행을 잠근 채 완주 행까지 잡으면 두 사용자가 동시에 승인될 때 교착 후보가 된다.
+
+③ 배치는 사용자를 한 명씩 **각각 트랜잭션**으로 돈다. 한 명 실패가 전체를 되돌리지 않는다. 응답은 `{scanned, created, canceled, failed:[userId...]}`.
+
+### 2-4 완주 취소 연쇄
+
+완주 행이 `CANCELED`가 되면 같은 트랜잭션에서:
+
+1. 그 완주를 근거로 발행된 **코스 인증서** → `REVOKED`(사유 `COMPLETION_CANCELED`)
+2. 그 완주로 적립된 보상 중 **`GRANTED`(미수령)** → `REVOKED`. `CLAIM_REQUESTED`·`APPROVED`·`SHIPPED`는 건드리지 않고 `needs_review = true`만 켠다(실물이 이미 움직였을 수 있음 — 사람이 본다)
+3. 완주 코스 수가 3 아래로 내려가면 **중간본** → `REVOKED`
+4. 회향 조건이 깨지면 **회향 인증서** → `REVOKED`, 회향 보상은 2번 규칙과 동일
+5. 전자책(챕터 9)은 완주 여부와 무관하게 개인 소장이므로 손대지 않는다(챕터 6 결정: 멱등, 이미 됨)
+
+취소 뒤 다시 5/5가 되면 새 완주 행을 만들지 않고 **같은 행을 COMPLETED로 되돌린다**(`(user_id, course_id)` 유니크이므로). 이때 인증서는 **새 번호로 재발행**(회수된 번호는 재사용 금지 — 공개 진위 확인에서 "회수됨"으로 계속 조회돼야 한다).
+
+### 2-5 중간본·회향
+
+```
+completedCourses(userId) = COUNT(completion WHERE status=COMPLETED)
+activeCourses            = COUNT(course WHERE status=ACTIVE)
+
+중간본 성립 = completedCourses >= 3
+회향 성립   = completedCourses >= activeCourses
+           AND completedCourses >= hoehyang-min-courses (12)
+           AND activeCourses    >= hoehyang-min-courses (12)
+```
+
+- 세 번째 줄이 챕터 5 보강에서 넣은 하한이다. ACTIVE 코스가 1개뿐인 시드 상태(데모 1개)에서 회향이 절대 성립하면 안 된다 → **W15에서 반드시 실측**.
+- 시드 12코스는 전부 DRAFT다. 회향 성립 테스트는 테스트 SQL로 코스 12개를 임시 ACTIVE로 만들고 cleanup에서 되돌린다(§7-3).
+
+---
+
+## 3. 인증서 규칙 (`CertificateService`)
+
+### 3-1 종류와 번호
+
+| kind | 근거 | 접두 | 발행 시점 |
+|---|---|---|---|
+| `COURSE` | completion 1행 | PG | 코스 완주 확정 시 자동 |
+| `INTERIM`(중간본) | 사용자 | PG | completedCourses가 3이 되는 순간 자동, 사용자당 1장 |
+| `HOEHYANG`(회향) | 사용자 | HH | 회향 성립 순간 자동, 사용자당 1장 |
+
+번호 형식: `{접두}-{yyyy}-{6자리 일련}` (예 `PG-2026-000117`). 일련은 **DB 시퀀스 표 또는 AUTO_INCREMENT 행 번호** 기반으로 만든다. `MAX(no)+1`은 금지(동시 발행 시 중복 → 이것이 `CERT-4090`이 나는 실제 원인이 된다). 저장소에 이미 다른 형식이 확정돼 있고 위 규칙(접두·중복 불가·재사용 금지)을 만족하면 유지하고 보고.
+
+### 3-2 상태
+
+`VALID → REVOKED` 한 방향. 되돌리지 않는다. 재발행은 새 행·새 번호.
+
+| 회수 사유 코드 | 뜻 |
+|---|---|
+| `COMPLETION_CANCELED` | §2-4 연쇄 |
+| `ADMIN` | 관리자 수동 회수(사유 문자열 필수, 1~200자) |
+| `USER_WITHDRAWN` | 회원 탈퇴(챕터 1 연쇄 — 이미 있으면 유지) |
+
+### 3-3 에러코드
+
+| 코드 | HTTP | 언제 |
+|---|---|---|
+| `CERT-4040` | 404 | 번호 없음 / 본인 것 아님(본인 조회 API에서는 404로 통일 — 남의 인증서 존재 여부를 노출하지 않는다) |
+| `CERT-4090` | 409 | 같은 근거로 이미 VALID 인증서가 있는데 또 발행 시도 |
+| `CERT-4091` | 409 | 이미 REVOKED인 것을 다시 회수 |
+
+명세 §7에 있는 것만 쓴다. 저장소의 `CERT_*` 중 위 셋과 대응하지 않는 코드는 §5 미참조 정리 대상.
+
+### 3-4 공개 진위 확인(비로그인)
+
+- 인증 없이 번호로 조회. 응답 필드는 **이것뿐**: `number, kind, status(VALID|REVOKED), issuedAt, revokedAt(null 가능), holderMasked, courseName(코스일 때)`
+- `holderMasked` = 이름 첫 글자 + 나머지 `*` (예 `남**`). 2자 이름은 `남*`. userId·이메일·전화·주소 **절대 미포함**.
+- 없는 번호 → 404 `CERT-4040`. 회수된 번호 → **200 + status REVOKED**(404 아님 — "이런 번호가 있었고 지금은 무효"가 진위 확인의 목적).
+- 이 엔드포인트는 챕터 1 보안 점검 S-목록의 "비로그인 허용 목록"에 들어 있어야 한다. 없으면 `security-check.sh`가 잡아야 정상 → 결과가 "전부 통과"면 도구부터 의심(§6-11).
+- 분당 호출 제한이 저장소에 있으면 유지(보안 검사 제거 금지 규칙).
+
+### 3-5 파일 키
+
+`certificate.file_key`와 `CertificateMapper.updateFileKey`는 **챕터 9(전자책·인쇄)** 에서 PDF를 만들 때 쓴다. 지금 미참조여도 **삭제하지 않는다**. `정리.md` §7 미결에 "ch9에서 참조 예정"으로 적는다.
+
+---
+
+## 4. 보상 규칙 (`RewardService`)
+
+### 4-1 적립
+
+| 사건 | 보상 |
+|---|---|
+| 코스 완주 | 규칙표(`reward_rule`) 기준 — 디지털 배지 등 |
+| 중간본 | 규칙표 기준 |
+| 회향 | 규칙표 기준 — 실물(PHYSICAL) 포함 가능 |
+
+- 멱등 키 `(user_id, source_type, source_id, reward_type)` 유니크. 같은 완주로 두 번 적립되지 않는다. 재집계를 100번 돌려도 보상 수는 같다 → **W09**.
+- `reward_rule`이 없는 사건은 적립 없이 조용히 넘어간다(에러 아님). 규칙표가 비어 있으면 로그 WARN 1줄.
+
+### 4-2 상태 기계
+
+```
+GRANTED ──claim──▶ CLAIM_REQUESTED ──승인──▶ APPROVED ──발송──▶ SHIPPED
+   │                     │
+   │                     └──반려──▶ REJECTED (사유 필수) ──▶ 다시 claim 가능(GRANTED로 복귀 아님, REJECTED에서 claim 허용)
+   └──완주취소──▶ REVOKED
+DIGITAL은 GRANTED가 곧 최종(수령 신청 개념 없음)
+```
+
+허용되지 않는 전이는 전부 `REWARD-4090`(409).
+
+### 4-3 claimable — 이 챕터의 STEP 0
+
+응답의 `claimable`은 **서버가 매번 계산**한다:
+
+```
+claimable = rewardType == PHYSICAL
+        AND status IN (GRANTED, REJECTED)
+        AND reward.user_id == 요청자
+```
+
+**5-1 결함(전체 점검 C에서 발견)**: `POST /api/rewards/{id}/claim`이 `claimable:false`인 보상에도 200을 돌려준다 — 응답의 claimable을 프론트가 안 보고 눌러도 통과된다. 고친 뒤 규칙:
+
+| 상황 | 결과 |
+|---|---|
+| 본인 것 아님 | 404 `REWARD-4040`(존재 노출 안 함) — 저장소가 403 `REWARD-4030`을 쓰고 있으면 **유지**(보안 검사 제거 금지) |
+| DIGITAL | 400 `REWARD-4001` "수령 신청 대상이 아닙니다" |
+| status가 GRANTED/REJECTED 아님 | 409 `REWARD-4092` "이미 신청되었거나 처리된 보상입니다" |
+| 배송 정보 검증 실패 | 400 (챕터 1 공통 VALIDATION 코드, `@Validated`) |
+| 통과 | 200, status → CLAIM_REQUESTED, `claimable:false` |
+
+배송 정보(`recipientName 1~50, phone, address 1~200, memo 0~200`)는 **`reward_claim` 별도 표**에 두고 `reward` 본체에는 넣지 않는다(개인정보 최소 노출 — 목록 API는 `reward`만 읽는다). 이미 본체에 있으면 ALTER 후보로 보고하고 이번엔 유지.
+
+컬렉션 **R09**의 기대값이 뒤집힌다(200 → 400/409). **R28(409)은 유지.**
+
+### 4-4 관리자 심사
+
+- 승인: `CLAIM_REQUESTED → APPROVED`, 발송: `APPROVED → SHIPPED`(송장 문자열 선택). 반려: `CLAIM_REQUESTED → REJECTED`, 사유 1~200자 필수.
+- 관리자 아님 → 403 `REWARD-4030`(챕터 1 공통 권한 코드가 있으면 그것을 쓰고 REWARD-4030은 미참조 정리 대상 — 어느 쪽인지 판정해 보고).
+- 관리자 목록에서 `needs_review = true`인 것은 항상 맨 위.
+
+### 4-5 에러코드
+
+| 코드 | HTTP | 언제 |
+|---|---|---|
+| `REWARD-4001` | 400 | claim 대상 아님(DIGITAL) |
+| `REWARD-4030` | 403 | 권한(관리자 아님) — 공통 코드로 대체 가능 |
+| `REWARD-4040` | 404 | 없음/본인 것 아님 |
+| `REWARD-4090` | 409 | 허용되지 않는 상태 전이(심사) |
+| `REWARD-4092` | 409 | claim 중복(이미 신청·처리됨) |
+
+---
+
+## 5. 미참조 코드 정리
+
+`mapper-check.js`·컴파일러 경고·IDE unused 기준으로 **3열 표** `docs/audit/ch7-unused.md`를 만든다: `항목 | 판정(삭제/유지/교체) | 근거`.
+
+| 미리 정한 판정 | |
+|---|---|
+| `CertificateMapper.updateFileKey` | **유지**(§3-5) |
+| `CERT_*` 중 §3-3 표에 없는 코드 | 명세 §7에 있으면 유지(구현 누락 보고), 없으면 **삭제** |
+| `REWARD_*` 중 §4-5 표에 없는 코드 | 위와 동일 |
+| Mapper XML에 있는데 Java 인터페이스에 없는 SQL | 삭제(mapper-check 결과가 0건이면 도구부터 의심) |
+
+삭제한 원본은 `backend/docs/audit/ch7-replaced/`에 그대로 복사.
+
+---
+
+## 6. 기능 ↔ 엔드포인트 대조표 (endpoints.md가 정본)
+
+| # | 기능 | 예상 경로(대조용) | 인증 |
+|---|---|---|---|
+| 1 | 내 완주 목록 | `GET /api/completions` | USER |
+| 2 | 관리자 재집계(사용자 1명) | `POST /api/admin/completions/recount/{userId}` | ADMIN |
+| 3 | 관리자 재집계(전체 배치) | `POST /api/admin/completions/recount` | ADMIN |
+| 4 | 내 인증서 목록 | `GET /api/certificates` | USER |
+| 5 | 내 인증서 1장 | `GET /api/certificates/{id}` | USER(본인) |
+| 6 | 공개 진위 확인 | `GET /api/certificates/verify/{number}` | 없음 |
+| 7 | 관리자 회수 | `POST /api/admin/certificates/{id}/revoke` | ADMIN |
+| 8 | 내 보상 목록(claimable 포함) | `GET /api/rewards` | USER |
+| 9 | 수령 신청 | `POST /api/rewards/{id}/claim` | USER(본인) |
+| 10 | 관리자 심사 목록 | `GET /api/admin/rewards?status=` | ADMIN |
+| 11 | 관리자 승인/발송/반려 | `POST /api/admin/rewards/{id}/{approve|ship|reject}` | ADMIN |
+
+- 경로가 다르면 endpoints.md 것을 쓴다. **없으면 만들지 않고** "endpoints.md 부재"로 보고(엔드포인트 73개 유지).
+- 6번은 비로그인 허용 목록에 있어야 한다(§3-4).
+
+---
+
+## 7. 확인포인트 폴더 W (newman) · JUnit
+
+### 7-1 폴더 W — 요청 순서와 기대값
+
+전제 데이터: 데모 코스 1개(ACTIVE)·슬롯 5·사용자 U1·U2·관리자 ADM. cleanup → 아래 순서 → SQL 채점 → cleanup, **2회 동일**.
+
+| W | 요청 | 기대 |
+|---|---|---|
+| W01 | U1 도장 4/5 만들기(챕터 5 흐름 재사용) 후 `GET /api/completions` | 200, 완주 0건 |
+| W02 | U1 5번째 도장 승인(ADM) | 200 |
+| W03 | `GET /api/completions` | 200, 완주 1건, `courseId`=데모, `status=COMPLETED` |
+| W04 | `GET /api/certificates` | 200, kind=COURSE 1장, 번호 `^PG-\d{4}-\d{6}$`, VALID |
+| W05 | `GET /api/certificates/verify/{번호}` (토큰 없이) | 200, status VALID, `holderMasked` 정규식 `^.\*+$`, 응답에 `userId`·`email`·`phone` 키 **없음** |
+| W06 | `GET /api/certificates/verify/PG-1999-000000` | 404 CERT-4040 |
+| W07 | U2 토큰으로 `GET /api/certificates/{U1의 id}` | 404 CERT-4040 |
+| W08 | `GET /api/rewards` (U1) | 200, 규칙표 기준 n건, PHYSICAL이면 `claimable:true`, DIGITAL이면 false |
+| W09 | ADM 재집계 `POST .../recount/{U1}` 3회 연속 | 매번 200, `created:0 canceled:0`, 보상 수·인증서 수 변화 없음(SQL 채점) |
+| W10 | U1 DIGITAL 보상에 claim | **400 REWARD-4001** |
+| W11 | U1 PHYSICAL 보상에 claim(배송정보 정상) | 200, status CLAIM_REQUESTED, `claimable:false` |
+| W12 | 같은 보상에 다시 claim | **409 REWARD-4092** |
+| W13 | U2 토큰으로 U1 보상 claim | 404 REWARD-4040(또는 저장소 기존 403 유지) |
+| W14 | ADM 반려(사유 없이) | 400 VALIDATION |
+| W15 | 회향 미성립 확인: `GET /api/certificates` | HH 0장 (ACTIVE 코스 1개 — 하한 12) |
+| W16 | ADM이 U1 도장 1개 반려 | 200 |
+| W17 | `GET /api/completions` | status CANCELED / `GET /api/certificates` COURSE 인증서 REVOKED / `GET /api/rewards` CLAIM_REQUESTED 건은 그대로 + SQL로 `needs_review=1` 확인, GRANTED 건은 REVOKED |
+| W18 | `GET /api/certificates/verify/{회수된 번호}` | **200**, status REVOKED, revokedAt not null |
+| W19 | ADM이 그 도장 재승인 | 200 → `GET /api/completions` COMPLETED(행 수 여전히 1), 인증서 **새 번호** VALID 1장 + 옛 번호 REVOKED 1장 |
+| W20 | ADM 승인→발송→발송(중복) | 200 → 200 → **409 REWARD-4090** |
+| W21 | 회향 성립(테스트 SQL로 코스 12 ACTIVE + U1 완주 12 주입) 후 ADM 재집계 | 200 → HH 인증서 1장 VALID, 회향 보상 적립. 재집계 1회 더 → 변화 없음 |
+| W22 | 회향 뒤 완주 1개 취소 → 재집계 | HH REVOKED, 회향 실물 보상 GRANTED였으면 REVOKED |
+
+### 7-2 JUnit (실제 MySQL)
+
+| 클래스 | 반드시 있는 테스트 |
+|---|---|
+| `CompletionServiceTest` | 4/5→미완주 · 5/5→완주행 생성 · 반복 호출 멱등 · 반려→CANCELED+연쇄 · 재승인→같은 행 COMPLETED · 하한 12(ACTIVE 1개면 회향 false, 12개면 true) · **동시 2스레드 승인 교착 0** |
+| `CertificateServiceTest` | 번호 형식 · 동시 발행 10건 번호 중복 0 · 중복 발행 CERT-4090 · 재회수 CERT-4091 · verify 마스킹(2자 이름 포함) · verify에 개인정보 필드 없음 |
+| `RewardServiceTest` | 멱등 키 · claimable 계산 3분기 · claim DIGITAL 400 · claim 중복 409 · 상태 전이 표 전수(허용 5·불허 전부 4090) · 반려 후 재claim 허용 |
+
+### 7-3 테스트 데이터 규칙
+
+- 회향 시나리오용 SQL은 `backend/docs/verify/body/w-hoehyang-setup.sql`·`w-hoehyang-teardown.sql`로 분리. **course.status를 바꾼 것은 teardown에서 반드시 DRAFT로 복원**(시드 정본은 전부 DRAFT).
+- `cleanup.sql`에 `completion · certificate · reward · reward_claim` 테스트 사용자 행 삭제를 추가. 시퀀스 표를 쓰면 시퀀스는 되돌리지 않는다(번호 재사용 금지 원칙과 같음 — 채점은 형식 정규식으로).
+- `all-checkpoints.sql`에 W 채점 추가: 완주 행 수, 인증서 VALID/REVOKED 수, 보상 상태별 수, `needs_review` 수, 번호 중복 0.
+
+---
+
+## 8. 함정 표
+
+| # | 함정 | 대책 |
+|---|---|---|
+| 1 | 도장 트랜잭션 안에서 완주 행까지 잠금 → 동시 승인 교착 | 재집계는 도장 커밋 **뒤** 별도 트랜잭션(§2-3) |
+| 2 | `MAX(no)+1`로 번호 생성 → 동시 발행 중복 | 시퀀스 표/AUTO_INCREMENT(§3-1) |
+| 3 | 회수된 인증서를 verify에서 404로 처리 | 200 + REVOKED(§3-4) |
+| 4 | 진행률은 `progressOf`, 완주는 별도 SQL → 두 값이 어긋남 | 완주도 `progressOf` 결과로 판정(§2-1) |
+| 5 | claim이 응답의 `claimable`만 믿고 서버 재확인 없음(5-1) | §4-3 |
+| 6 | 완주 취소 시 이미 발송된 실물 보상까지 REVOKED | GRANTED만 REVOKED, 나머지는 `needs_review`(§2-4) |
+| 7 | 재승인 시 회수된 번호를 되살림 | 새 번호 재발행, 옛 번호는 REVOKED로 남김(§2-4) |
+| 8 | 배송 주소를 `reward` 본체에 두고 목록 API로 노출 | `reward_claim` 분리(§4-3) |
+| 9 | ACTIVE 코스 1개로 회향 성립 | 하한 12 (§2-5, W15) |
+| 10 | 배치 재집계가 한 트랜잭션 → 한 명 실패에 전체 롤백 | 사용자별 트랜잭션(§2-3) |
+| 11 | 점검 결과가 극단(전부 통과·0건) | 도구부터 의심(정리.md §6-11) |
+| 12 | 시드 course.status를 테스트가 ACTIVE로 바꿔 놓고 복원 안 함 | teardown 필수(§7-3), 2회 동일 검사로 잡힘 |
+
+---
+
+## 9. 챕터 닫힘 조건
+
+- newman 전체(A~X + **W**) 2회 동일, 기능 ⚠ 0
+- JUnit 전부 통과(151 + 신규), 동시성 테스트 교착 0
+- `runtime-check.sh` ERROR 0·5xx 0, `security-check.sh` S1~S12 통과(+ verify 비로그인 허용 확인), `db-check.sh` H1~H12
+- `docs/audit/ch7-completion.md`(보고서) · `ch7-unused.md` · `ch7-replaced/` 존재
+- `정리.md` §1(상태 숫자) · §4(프론트: claimable·상태 기계·verify 응답 필드) · §5(ALTER 후보 추가분) · §6(함정 1·2·3·6 추가) · §7(updateFileKey ch9 참조, needs_review 운영 절차) 갱신
+- 보고서 마지막 줄: `newman N/N, 기능 ✅ a · ⚠ 0 · ❌ 0 · — d`

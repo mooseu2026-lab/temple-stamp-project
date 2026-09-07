@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.reward.RewardClaimMapper">
+
+    <!--
+      보상 하나에 배송 정보 하나(uk_reward_claim). 반려 뒤 다시 신청하면 덮어쓴다 —
+      주소가 바뀌어서 다시 신청하는 경우가 있다.
+    -->
+    <delete id="deleteByUser">
+        DELETE FROM reward_claim
+        WHERE user_reward_id IN (SELECT user_reward_id FROM user_reward WHERE user_id = #{userId})
+    </delete>
+
+    <insert id="upsert">
+        INSERT INTO reward_claim (user_reward_id, recipient_name, phone, address, memo)
+        VALUES (#{userRewardId}, #{recipientName}, #{phone}, #{address}, #{memo})
+        ON DUPLICATE KEY UPDATE recipient_name = #{recipientName},
+                                phone          = #{phone},
+                                address        = #{address},
+                                memo           = #{memo}
+    </insert>
+
+</mapper>

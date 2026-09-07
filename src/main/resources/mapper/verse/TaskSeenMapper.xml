@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.verse.TaskSeenMapper">
+
+    <insert id="markSeen">
+        INSERT IGNORE INTO task_seen (user_id, course_id, mission_id, seen_at)
+        VALUES (#{userId}, #{courseId}, #{missionId}, NOW())
+    </insert>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(DISTINCT mission_id) FROM task_seen WHERE user_id = #{userId}
+    </select>
+
+</mapper>

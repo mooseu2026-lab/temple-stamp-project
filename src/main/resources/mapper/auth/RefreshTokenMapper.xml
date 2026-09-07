@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.auth.RefreshTokenMapper">
+
+    <insert id="save" parameterType="com.templestamp.auth.RefreshToken"
+            useGeneratedKeys="true" keyProperty="refreshTokenId">
+        INSERT INTO refresh_token (user_id, token_hash, expires_at)
+        VALUES (#{userId}, #{tokenHash}, #{expiresAt})
+    </insert>
+
+    <select id="findByTokenHash" resultType="com.templestamp.auth.RefreshToken">
+        SELECT refresh_token_id, user_id, token_hash, expires_at, revoked_at, created_at
+        FROM refresh_token
+        WHERE token_hash = #{tokenHash}
+    </select>
+
+    <update id="revoke">
+        UPDATE refresh_token
+        SET revoked_at = NOW()
+        WHERE token_hash = #{tokenHash}
+          AND revoked_at IS NULL
+    </update>
+
+    <update id="revokeAllByUser">
+        UPDATE refresh_token
+        SET revoked_at = NOW()
+        WHERE user_id = #{userId}
+          AND revoked_at IS NULL
+    </update>
+
+    <!-- 폐기된 토큰도 만료 시각이 지나기 전까지는 남겨 둔다. 재사용 감지 근거가 되기 때문이다. -->
+    <!--
+      만료 시각에서 <b>유예 시간만큼 더</b> 지난 행만 지운다(챕터 9 §5 ②).
+      폐기됐어도 아직 만료 전인 행은 남긴다 — 챕터 1 의 재사용 탐지가 바로 그 행을 보고
+      "이미 쓴 토큰이 또 왔다" 를 판단한다. 그것까지 지우면 탐지가 눈을 잃는다(함정 6).
+      한 번에 지우는 수를 묶는 이유는 첫 실행에서 수천 행이 한 트랜잭션에 들어오지 않게 하기 위해서다.
+    -->
+    <delete id="deleteExpiredBefore">
+        DELETE FROM refresh_token
+        WHERE expires_at &lt; #{cutoff}
+        ORDER BY expires_at
+        LIMIT #{limit}
+    </delete>
+
+</mapper>

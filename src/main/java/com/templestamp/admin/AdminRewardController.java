@@ -1,0 +1,45 @@
+package com.templestamp.admin;
+
+import com.templestamp.admin.dto.ClaimReviewRequest;
+import com.templestamp.global.response.ApiResponse;
+import com.templestamp.global.response.ItemsResponse;
+import com.templestamp.global.security.AuthenticatedUser;
+import com.templestamp.reward.RewardService;
+import com.templestamp.reward.dto.AdminClaimRow;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * 보상 청구 심사. 감사 점수가 임계치를 넘어 UNDER_REVIEW 로 남은 건들만 여기로 온다.
+ * 점수와 근거는 요청·응답 어디에도 싣지 않는다 — 어떤 신호로 걸리는지 알려 주면
+ * 그걸 피해 가는 법을 알려 주는 셈이 된다.
+ */
+@Validated
+@RestController
+@RequestMapping("/api/admin/rewards")
+@RequiredArgsConstructor
+public class AdminRewardController {
+
+    private final RewardService rewardService;
+
+    @GetMapping("/claims/pending")
+    public ApiResponse<ItemsResponse<AdminClaimRow>> getUnderReview() {
+        return ApiResponse.ok(ItemsResponse.of(rewardService.getUnderReview()));
+    }
+
+    @PostMapping("/claims/{userRewardId}/review")
+    public ApiResponse<Void> review(@AuthenticationPrincipal AuthenticatedUser admin,
+                                    @PathVariable Long userRewardId,
+                                    @Valid @RequestBody ClaimReviewRequest request) {
+        rewardService.review(admin.userId(), userRewardId, request);
+        return ApiResponse.ok();
+    }
+}

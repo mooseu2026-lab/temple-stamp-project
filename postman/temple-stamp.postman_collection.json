@@ -1,0 +1,179 @@
+{
+  "info": {
+    "name": "temple-stamp ch2 — 마스터 조회 확인포인트 9종",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.request.url.getPath().endsWith('/health')) {",
+          "  pm.test('X-Request-Id 존재', () => pm.response.to.have.header('X-Request-Id'));",
+          "  pm.test('timestamp +09:00', () => pm.expect(pm.response.json().timestamp).to.match(/\\+09:00$/));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 사전 — 회원가입 (이미 있으면 409 AUTH-4090 도 통과)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('201 또는 409', () => pm.expect([201, 409]).to.include(pm.response.code));"
+      ]}}],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/api/auth/signup", "host": ["{{baseUrl}}"], "path": ["api", "auth", "signup"] },
+        "body": { "mode": "raw", "raw": "{\"email\":\"{{email}}\",\"password\":\"{{password}}\",\"nickname\":\"확인포인트\"}" }
+      }
+    },
+    {
+      "name": "00 사전 — 로그인 → accessToken 저장",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200', () => pm.response.to.have.status(200));",
+        "const d = pm.response.json().data;",
+        "pm.expect(d.tokenType).to.eql('Bearer');",
+        "pm.expect(d.expiresIn).to.eql(1800);",
+        "pm.environment.set('accessToken', d.accessToken);",
+        "pm.environment.set('userId', d.user.userId);"
+      ]}}],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+        "body": { "mode": "raw", "raw": "{\"email\":\"{{email}}\",\"password\":\"{{password}}\"}" }
+      }
+    },
+    {
+      "name": "① 비로그인 GET /api/courses → progress null",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 success', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().success).to.be.true; });",
+        "const items = pm.response.json().data.items;",
+        "pm.test('items 1건 이상', () => pm.expect(items.length).to.be.above(0));",
+        "pm.test('모든 progress 가 null', () => items.forEach(c => pm.expect(c.progress).to.be.null));"
+      ]}}],
+      "request": { "method": "GET", "header": [],
+        "url": { "raw": "{{baseUrl}}/api/courses", "host": ["{{baseUrl}}"], "path": ["api", "courses"] } }
+    },
+    {
+      "name": "② 로그인 GET /api/sites/1/page 1회차",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200', () => pm.response.to.have.status(200));",
+        "const d = pm.response.json().data;",
+        "pm.test('8블록 키 존재', () => ['site','verse','expansionPhrase','mission','viewpoints','badges','riderInfo','verifyState'].forEach(k => pm.expect(d).to.have.property(k)));",
+        "pm.test('guideAvailable 없음', () => pm.expect(d).to.not.have.property('guideAvailable'));",
+        "pm.test('미시작이라 verifyState null', () => pm.expect(d.verifyState).to.be.null);",
+        "pm.environment.set('phraseId1', d.expansionPhrase.expansionPhraseId);"
+      ]}}],
+      "request": { "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": { "raw": "{{baseUrl}}/api/sites/1/page", "host": ["{{baseUrl}}"], "path": ["api", "sites", "1", "page"] } }
+    },
+    {
+      "name": "② 로그인 GET /api/sites/1/page 2회차 (seen 미기록 확인은 SQL 로)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200', () => pm.response.to.have.status(200));",
+        "const d = pm.response.json().data;",
+        "pm.test('문구 블록 존재(계층당 1편 시드라 동일 문구 허용)', () => pm.expect(d.expansionPhrase.expansionPhraseId).to.be.a('number'));"
+      ]}}],
+      "request": { "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": { "raw": "{{baseUrl}}/api/sites/1/page", "host": ["{{baseUrl}}"], "path": ["api", "sites", "1", "page"] } }
+    },
+    {
+      "name": "③ GET /api/courses?regionId=0 → 400 COMMON-4000",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('400', () => pm.response.to.have.status(400));",
+        "const e = pm.response.json();",
+        "pm.test('success false, code COMMON-4000', () => { pm.expect(e.success).to.be.false; pm.expect(e.error.code).to.eql('COMMON-4000'); });",
+        "pm.test('fields 에 regionId', () => pm.expect(JSON.stringify(e.error.fields)).to.include('regionId'));"
+      ]}}],
+      "request": { "method": "GET", "header": [],
+        "url": { "raw": "{{baseUrl}}/api/courses?regionId=0", "host": ["{{baseUrl}}"], "path": ["api", "courses"],
+                 "query": [{ "key": "regionId", "value": "0" }] } }
+    },
+    {
+      "name": "④ GET /api/courses/1 + Accept-Language en-US → siteName 영문",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200', () => pm.response.to.have.status(200));",
+        "const d = pm.response.json().data;",
+        "pm.test('sites 5건', () => pm.expect(d.sites.length).to.eql(5));",
+        "pm.test('첫 사찰 이름이 영문', () => pm.expect(d.sites[0].siteName).to.match(/^[A-Za-z]/));",
+        "pm.test('progress 있음(로그인)', () => pm.expect(d.progress === null || typeof d.progress === 'object').to.be.true);"
+      ]}}],
+      "request": { "method": "GET",
+        "header": [{ "key": "Accept-Language", "value": "en-US,en;q=0.9" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": { "raw": "{{baseUrl}}/api/courses/1", "host": ["{{baseUrl}}"], "path": ["api", "courses", "1"] } }
+    },
+    {
+      "name": "⑤ GET /api/sites/1/guide → steps 7칸",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200', () => pm.response.to.have.status(200));",
+        "const s = pm.response.json().data.steps;",
+        "pm.test('항상 7칸', () => pm.expect(s.length).to.eql(7));",
+        "pm.test('position 1~7 순서', () => s.forEach((x, i) => pm.expect(x.position).to.eql(i + 1)));",
+        "pm.test('없는 자리는 etiquette null + passage 존재', () => s.filter(x => !x.present).forEach(x => { pm.expect(x.etiquette).to.be.null; pm.expect(x.passage).to.be.a('string'); }));"
+      ]}}],
+      "request": { "method": "GET", "header": [],
+        "url": { "raw": "{{baseUrl}}/api/sites/1/guide", "host": ["{{baseUrl}}"], "path": ["api", "sites", "1", "guide"] } }
+    },
+    {
+      "name": "⑥-a GET /api/verses/99 → 400 COMMON-4000",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('400 COMMON-4000', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error.code).to.eql('COMMON-4000'); });"
+      ]}}],
+      "request": { "method": "GET", "header": [],
+        "url": { "raw": "{{baseUrl}}/api/verses/99", "host": ["{{baseUrl}}"], "path": ["api", "verses", "99"] } }
+    },
+    {
+      "name": "⑥-b GET /api/sites/999 → 404 SITE-4040",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('404 SITE-4040', () => { pm.response.to.have.status(404); pm.expect(pm.response.json().error.code).to.eql('SITE-4040'); });"
+      ]}}],
+      "request": { "method": "GET", "header": [],
+        "url": { "raw": "{{baseUrl}}/api/sites/999", "host": ["{{baseUrl}}"], "path": ["api", "sites", "999"] } }
+    },
+    {
+      "name": "⑥-c GET /api/sites/1/page?target=AGE99 → 400 COMMON-4003",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('400 COMMON-4003 (enum 변환 실패)', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error.code).to.eql('COMMON-4003'); });"
+      ]}}],
+      "request": { "method": "GET", "header": [],
+        "url": { "raw": "{{baseUrl}}/api/sites/1/page?target=AGE99", "host": ["{{baseUrl}}"], "path": ["api", "sites", "1", "page"],
+                 "query": [{ "key": "target", "value": "AGE99" }] } }
+    },
+    {
+      "name": "⑦ 좌표 포함 POST /api/pilgrimages (로그인) → 400 COMMON-4001",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('400 COMMON-4001 — CoordinateFieldGuard 가 컨트롤러 앞에서 끊음', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error.code).to.eql('COMMON-4001'); });"
+      ]}}],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": { "raw": "{{baseUrl}}/api/pilgrimages", "host": ["{{baseUrl}}"], "path": ["api", "pilgrimages"] },
+        "body": { "mode": "raw", "raw": "{\"courseId\":1,\"latitude\":37.57,\"longitude\":126.98}" }
+      }
+    },
+    {
+      "name": "⑧ 응답 헤더·timestamp (공통 Tests 가 전 요청에서 검사 — 여기서는 regions 로 재확인)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200, items 9건', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().data.items.length).to.eql(9); });",
+        "pm.test('X-Request-Id 32자리', () => pm.expect(pm.response.headers.get('X-Request-Id')).to.have.lengthOf(32));"
+      ]}}],
+      "request": { "method": "GET", "header": [],
+        "url": { "raw": "{{baseUrl}}/api/regions", "host": ["{{baseUrl}}"], "path": ["api", "regions"] } }
+    },
+    {
+      "name": "⑨ GET /health → {status:UP}",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('200 UP', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('UP'); });",
+        "pm.test('ApiResponse 로 감싸지 않음(Actuator 원형)', () => pm.expect(pm.response.json()).to.not.have.property('success'));"
+      ]}}],
+      "request": { "method": "GET", "header": [],
+        "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] } }
+    }
+  ]
+}

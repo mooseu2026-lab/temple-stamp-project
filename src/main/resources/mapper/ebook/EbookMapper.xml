@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.ebook.EbookMapper">
+
+    <sql id="columns">
+        ebook_id, user_id, pilgrimage_id, ebook_type, snapshot_hash, status, pdf_key, epub_key,
+        fail_reason, page_count, byte_size, retry_count, building_started_at, queued_at, built_at,
+        created_at, updated_at
+    </sql>
+
+    <!--
+      (순례, 종류) 에 UNIQUE 가 걸려 있어 완주 처리가 재시도돼도 대기열에 두 번 쌓이지 않는다.
+      회향본·중간본은 pilgrimage_id 가 NULL 이라 이 제약이 걸리지 않으므로 서비스가 따로 확인한다.
+    -->
+    <insert id="enqueue" parameterType="com.templestamp.ebook.Ebook"
+            useGeneratedKeys="true" keyProperty="ebookId">
+        INSERT IGNORE INTO ebook (user_id, pilgrimage_id, ebook_type, status, queued_at)
+        VALUES (#{userId}, #{pilgrimageId}, #{ebookType}, 'REQUESTED', NOW())
+    </insert>
+
+    <select id="findById" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/> FROM ebook WHERE ebook_id = #{ebookId}
+    </select>
+
+    <!-- 중간본·회향본 중복 방지. FAILED 는 "없는 것" 으로 봐서 다시 큐에 넣을 수 있게 둔다. -->
+    <select id="findAliveByUserAndType" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/>
+        FROM ebook
+        WHERE user_id = #{userId}
+          AND ebook_type = #{ebookType}
+          AND pilgrimage_id IS NULL
+          AND status IN ('REQUESTED', 'READY')
+        LIMIT 1
+    </select>
+
+    <select id="findByPilgrimageAndType" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/>
+        FROM ebook
+        WHERE pilgrimage_id = #{pilgrimageId} AND ebook_type = #{ebookType}
+    </select>
+
+    <!-- 회향본·중간본은 코스가 없어 course_name 이 null 이다. LEFT JOIN 으로 받는다. -->
+    <select id="findRowsByUserId" resultType="com.templestamp.ebook.dto.EbookRow">
+        SELECT e.ebook_id,
+               e.user_id,
+               e.pilgrimage_id,
+               c.course_id,
+               c.name AS course_name,
+               e.ebook_type,
+               e.status,
+               e.pdf_key,
+               e.epub_key,
+               e.fail_reason,
+               e.page_count,
+               e.byte_size,
+               e.created_at
+        FROM ebook e
+                 LEFT JOIN pilgrimage p ON p.pilgrimage_id = e.pilgrimage_id
+                 LEFT JOIN course c ON c.course_id = p.course_id
+        WHERE e.user_id = #{userId}
+        ORDER BY e.created_at DESC
+    </select>
+
+    <!-- 키가 하나라도 들어오면 READY 로 옮긴다. 조판 워커가 마지막에 호출하는 문장이다. -->
+    <update id="updateFiles">
+        UPDATE ebook
+        SET pdf_key    = COALESCE(#{pdfKey}, pdf_key),
+            epub_key   = COALESCE(#{epubKey}, epub_key),
+            status     = 'READY',
+            built_at   = NOW(),
+            fail_reason = NULL
+        WHERE ebook_id = #{ebookId}
+    </update>
+
+    <!-- ==================== 챕터 9 — 개인 소장본 ==================== -->
+
+    <select id="findByUserAndHash" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/>
+        FROM ebook WHERE user_id = #{userId} AND snapshot_hash = #{snapshotHash}
+    </select>
+
+    <!--
+      개인 소장본만 센다(snapshot_hash 가 있는 것). 완주가 만들어 주는 코스본까지 세면
+      완주한 날에는 개인 소장본을 만들 수 없다 — 가장 만들고 싶은 날인데 막히는 셈이다.
+      상한의 목적은 "사용자가 버튼을 연달아 누르는 것" 을 막는 것이지 시스템이 만든 책이 아니다.
+    -->
+    <select id="countRequested" resultType="int">
+        SELECT COUNT(*) FROM ebook
+        WHERE user_id = #{userId} AND status = 'REQUESTED' AND snapshot_hash IS NOT NULL
+    </select>
+
+    <!-- READY 기준이다. 만들다 실패한 것까지 세면 실패가 사용자의 하루치를 먹는다.
+         코스본은 세지 않는다 — 위 countRequested 와 같은 이유. -->
+    <select id="countReadyToday" resultType="int">
+        SELECT COUNT(*) FROM ebook
+        WHERE user_id = #{userId} AND status = 'READY'
+          AND snapshot_hash IS NOT NULL AND DATE(built_at) = CURDATE()
+    </select>
+
+    <insert id="insertPersonal" parameterType="com.templestamp.ebook.Ebook"
+            useGeneratedKeys="true" keyProperty="ebookId">
+        INSERT INTO ebook (user_id, pilgrimage_id, ebook_type, snapshot_hash, status, queued_at)
+        VALUES (#{userId}, NULL, 'PERSONAL', #{snapshotHash}, 'REQUESTED', NOW())
+    </insert>
+
+    <select id="lockById" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/> FROM ebook WHERE ebook_id = #{ebookId} FOR UPDATE
+    </select>
+
+    <update id="markReady">
+        UPDATE ebook
+        SET status = 'READY', pdf_key = #{pdfKey}, page_count = #{pageCount},
+            byte_size = #{byteSize}, built_at = NOW(), fail_reason = NULL
+        WHERE ebook_id = #{ebookId}
+    </update>
+
+    <update id="markFailed">
+        UPDATE ebook
+        SET status = 'FAILED', fail_reason = #{failReason}, pdf_key = NULL
+        WHERE ebook_id = #{ebookId}
+    </update>
+
+    <select id="findRequestedIds" resultType="long">
+        SELECT ebook_id FROM ebook WHERE status = 'REQUESTED'
+        ORDER BY queued_at, ebook_id LIMIT #{limit}
+    </select>
+
+    <!--
+      최신 keep 권을 남기고 나머지를 오래된 것부터. 인쇄 주문이 걸린 책은 빠진다 —
+      종이로 찍는 중인 책을 지우면 주문서가 가리키는 것이 사라진다(함정 7).
+      취소된 주문은 걸린 것으로 세지 않는다.
+    -->
+    <select id="findTrimmable" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/> FROM (
+            SELECT e.*, ROW_NUMBER() OVER (ORDER BY e.built_at DESC, e.ebook_id DESC) AS rn
+            FROM ebook e
+            WHERE e.user_id = #{userId} AND e.status = 'READY'
+              AND NOT EXISTS (SELECT 1 FROM print_order po
+                               WHERE po.ebook_id = e.ebook_id AND po.status &lt;&gt; 'CANCELED')
+        ) t
+        WHERE t.rn &gt; #{keep}
+        ORDER BY t.built_at, t.ebook_id
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM ebook WHERE ebook_id = #{ebookId}
+    </delete>
+
+    <!-- 지울 수 있는 것만. 주문이 붙은 책은 파일도 남겨야 하므로 큐에 넣지 않는다. -->
+    <select id="findAllByUser" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/> FROM ebook
+        WHERE user_id = #{userId}
+          AND NOT EXISTS (SELECT 1 FROM print_order po WHERE po.ebook_id = ebook.ebook_id)
+    </select>
+
+    <!--
+      탈퇴 정리. <b>인쇄 주문이 아직 붙어 있는 책은 남긴다</b> — 주문서가 가리키는 것이
+      사라지면 인쇄소에 무엇을 보내야 하는지 알 수 없게 된다(함정 7 과 같은 판단).
+      끝난 주문은 앞 단계가 이미 지웠으므로, 여기 남는 것은 실물이 진행 중인 건뿐이다.
+    -->
+    <delete id="deleteByUser">
+        DELETE FROM ebook
+        WHERE user_id = #{userId}
+          AND NOT EXISTS (SELECT 1 FROM print_order po WHERE po.ebook_id = ebook.ebook_id)
+    </delete>
+
+    <select id="findRowById" resultType="com.templestamp.ebook.dto.EbookRow">
+        SELECT e.ebook_id, e.user_id, e.pilgrimage_id, c.course_id, c.name AS course_name,
+               e.ebook_type, e.status, e.pdf_key, e.epub_key, e.fail_reason,
+               e.page_count, e.byte_size, e.created_at
+        FROM ebook e
+                 LEFT JOIN pilgrimage p ON p.pilgrimage_id = e.pilgrimage_id
+                 LEFT JOIN course c ON c.course_id = p.course_id
+        WHERE e.ebook_id = #{ebookId}
+    </select>
+
+</mapper>

@@ -1,0 +1,216 @@
+﻿region_code,region_name,line_code,line_name,verse_no,site_name,disambiguation,track,serving_note,sunroad_route,sunroad_star,note
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,1,통도사 서운암,양산 통도사 산내암자,MAIN,"장독 5,000개·성파 종정 약된장",,,암자(본사 통도사와 구분)
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,1,금수암,산청,MAIN,대안스님·특화사찰 1호,,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,1,다솔사,사천 봉명산,MAIN,효당스님 반야로 죽로차,,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,1,쌍계사,하동 지리산,MAIN,차 시배지,,,제13교구본사
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,2,해인사,합천 가야산,MAIN,법보종찰,,,제12교구본사·v3.2 관람배지(티맵 8위)
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,2,범어사,부산 금정산,MAIN,선찰대본산,,,제14교구본사·v3.2 혼잡 우려
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,2,대원사,산청 지리산,MAIN,비구니 선원·특화사찰,,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,3,내원정사,부산 서구 엄광산,MAIN,원도심 검박,,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,3,선암사,부산 부산진구 백양산,MAIN,—,,,순천 선암사 아님
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,3,옥천사,고성 연화산,MAIN,옥샘,,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,4,표충사,밀양 재약산,MAIN,얼음골 약수,,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,4,성주사,창원 불모산,MAIN,—,,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,4,문수암,산청,MAIN,—,,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,5,용문사,남해 호구산,MAIN,호국 승병,,,예천·양평 용문사 아님
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,5,홍법사,부산 금정구 두구동,MAIN,국제포교 원력,,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,5,용화사,통영 미륵산,MAIN,미륵,,,청주 용화사 아님
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,1,용문사,예천 소백산,MAIN,특화사찰,,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,1,동화사,대구 팔공산,MAIN,특화사찰,,,제9교구본사
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,2,은해사,영천 팔공산,MAIN,—,,,제10교구본사
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,2,봉정사,안동 천등산,MAIN,최고 목조건축,,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,2,축서사,봉화 문수산,MAIN,—,,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,3,고운사,의성 등운산,MAIN,"산불 뒤 자연복원 76%, 비움의 현장",,,복원 중 — 스탬프 지점 보류(자리 비워둠)
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,3,희방사,영주 소백산,MAIN,—,,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,4,보경사,포항 내연산,MAIN,내연산,,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,4,기림사,경주 함월산,MAIN,오종수,,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,5,직지사,김천 황악산,MAIN,—,,,제8교구본사
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,5,도리사,구미 태조산,MAIN,신라 최초 가람,,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,5,골굴사,경주 함월산,MAIN,선무도,,,
+GANGWON,강원,GANGWON_COAST,강원 해안,1,현덕사,강릉 연곡,MAIN,생태,,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,1,망경산사,영월 망경대산,MAIN,—,,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,4,월정사,평창 오대산,MAIN,—,,,"제4교구본사 · [12라인] 2구→4구(v3.2 배정 복원, 전나무숲길 1km=포행)"
+GANGWON,강원,GANGWON_INLAND,강원 내륙,2,백담사,인제 설악산,MAIN,—,,,셔틀 진입 구간
+GANGWON,강원,GANGWON_COAST,강원 해안,2,보현사,강릉,MAIN,—,,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,3,청평사,춘천 오봉산,MAIN,—,,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,3,명주사,원주 신림,MAIN,판화박물관,,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,3,삼운사,춘천,MAIN,—,,,
+GANGWON,강원,GANGWON_COAST,강원 해안,3,삼화사,동해 두타산,MAIN,무릉계곡,,,"[12라인] 4구→3구(v3.2 배정 복원, 국행수륙재=절제)"
+GANGWON,강원,GANGWON_COAST,강원 해안,4,용연사,강릉 사천,MAIN,—,,,
+GANGWON,강원,GANGWON_COAST,강원 해안,4,화암사,고성 설악산 신선봉,MAIN,—,,,완주 화암사 아님
+GANGWON,강원,GANGWON_COAST,강원 해안,5,신흥사,속초 설악산,MAIN,—,,,제3교구본사
+GANGWON,강원,GANGWON_COAST,강원 해안,5,건봉사,고성,MAIN,치아사리,,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,5,구룡사,원주 치악산,MAIN,—,,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,5,법흥사,영월 사자산,MAIN,적멸보궁,,,불상 없음
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,1,백양사,장성 백암산,MAIN,정관스님 천진암·특화사찰,,,제18교구본사·v3.2 100만 초과
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,1,백련사,강진 만덕산,MAIN,특화사찰·다산 교유,,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,1,대흥사,해남 두륜산,MAIN,초의선사 다맥,,,제22교구본사
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,2,송광사,순천 조계산,MAIN,승보종찰,,,제21교구본사
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,2,화엄사,구례 지리산,MAIN,—,,,제19교구본사
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,2,도갑사,영암 월출산,MAIN,—,,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,3,무위사,강진 월출산,MAIN,—,,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,3,운주사,화순,MAIN,—,,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,3,증심사,광주 무등산,MAIN,—,,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,4,천은사,구례 지리산,MAIN,감로천,,,삼척 천은사 아님
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,4,대원사,보성 천봉산,MAIN,티벳박물관,,,산청 대원사 아님
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,4,무각사,광주 서구,MAIN,특화사찰,,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,5,미황사,해남 달마산,MAIN,땅끝,,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,5,불갑사,영광 모악산,MAIN,꽃무릇,,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,5,향일암,여수 돌산,MAIN,—,,,
+JEONBUK,전북,JEONBUK,전북,1,실상사,남원 지리산,MAIN,인드라망 생명공동체·유기농 자립,,,
+JEONBUK,전북,JEONBUK,전북,2,송광사,완주 종남산,MAIN,—,,,순천 송광사 아님
+JEONBUK,전북,JEONBUK,전북,2,귀정사,남원 산동,MAIN,—,,,
+JEONBUK,전북,JEONBUK,전북,3,내소사,부안 변산,MAIN,전나무숲,,,
+JEONBUK,전북,JEONBUK,전북,3,개암사,부안 능가산,MAIN,—,,,
+JEONBUK,전북,JEONBUK,전북,4,금당사,진안 마이산,MAIN,—,,,
+JEONBUK,전북,JEONBUK,전북,4,안국사,무주 적상산,MAIN,—,,,
+JEONBUK,전북,JEONBUK,전북,5,금산사,김제 모악산,MAIN,미륵도량,,,제17교구본사
+JEONBUK,전북,JEONBUK,전북,5,선운사,고창 도솔산,MAIN,—,,,제24교구본사
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,1,영평사,세종 장군산,MAIN,구절초,,,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,1,학림사,공주 계룡산 반포,MAIN,—,,,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,2,수덕사,예산 덕숭산,MAIN,—,,,제7교구본사
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,2,마곡사,공주 태화산,MAIN,—,,,제6교구본사
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,3,무량사,부여 만수산,MAIN,김시습 입적처,,,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,3,서광사,서산 부춘산,MAIN,—,,,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,4,갑사,공주 계룡산,MAIN,계룡산,,,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,5,부석사,서산 도비산,MAIN,서해 낙조,,,영주 부석사 아님
+CHUNGBUK,충북,CHUNGBUK,충북,1,미륵대흥사,단양 황정산,MAIN,—,,,
+CHUNGBUK,충북,CHUNGBUK,충북,2,석종사,충주 직동,MAIN,선원,,,
+CHUNGBUK,충북,CHUNGBUK,충북,3,반야사,영동 백화산,MAIN,절벽 문수전,,,
+CHUNGBUK,충북,CHUNGBUK,충북,4,용화사,청주,MAIN,—,,,통영 용화사 아님
+CHUNGBUK,충북,CHUNGBUK,충북,5,법주사,보은 속리산,MAIN,금동미륵대불,,,제5교구본사
+CHUNGBUK,충북,CHUNGBUK,충북,5,영국사,영동 천태산,MAIN,천년 은행나무,,,
+SEOUL,서울,SEOUL,서울,1,진관사,은평 북한산,MAIN,계호스님·특화사찰·향적당 체험,,,
+SEOUL,서울,SEOUL,서울,2,국제선센터,양천 목동,MAIN,—,,,현대 도심 사찰
+SEOUL,서울,SEOUL,서울,2,화계사,강북 수유동,MAIN,국제선원,,,
+SEOUL,서울,SEOUL,서울,3,길상사,성북 성북동,MAIN,법정스님 무소유,,,
+SEOUL,서울,SEOUL,서울,3,금선사,종로 구기동,MAIN,—,,,
+SEOUL,서울,SEOUL,서울,4,경국사,성북 정릉,MAIN,—,,,
+SEOUL,서울,SEOUL,서울,4,수국사,은평 갈현동,MAIN,—,,,
+SEOUL,서울,SEOUL,서울,5,조계사,종로 견지동,MAIN,총본산,,,
+SEOUL,서울,SEOUL,서울,5,도선사,강북 우이동,MAIN,—,,,
+SEOUL,서울,SEOUL,서울,5,묘각사,종로 숭인동,MAIN,—,,,[Q2 확정] 제외 — 시드 미투입
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,1,봉녕사,수원 팔달,MAIN,적문스님·명장 중 유일한 비구,,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,1,봉선사,남양주 진접,MAIN,특화사찰,,,제25교구본사
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,1,수도사,평택,MAIN,특화사찰,,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,2,연등국제선원,강화,MAIN,—,,,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,2,법륜사,용인 원삼,MAIN,—,,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,2,봉인사,남양주 진건,MAIN,—,,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,3,묘적사,남양주 와부,MAIN,—,,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,3,백련사,가평 축령산,MAIN,—,,,강진·강화 백련사 아님
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,3,회암사,양주 천보산,MAIN,폐사지의 비움,,,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,4,용문사,양평 용문산,MAIN,"1,100년 은행나무",,,예천·남해 용문사 아님
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,4,흥국사,고양 노고산,MAIN,숲 명상길,,,남양주·여수 흥국사 아님
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,4,연주암,과천 관악산,MAIN,—,,,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,5,용주사,화성 송산동,MAIN,효 사상,,,제2교구본사
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,5,신륵사,여주,MAIN,—,,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,5,전등사,강화 정족산,MAIN,호국,,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,1,통도사 서운암,양산 통도사 산내암자,SUNROAD,,배내고개·에덴밸리,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,1,다솔사,사천 봉명산,SUNROAD,,사천 곤명,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,1,쌍계사,하동 지리산,SUNROAD,,화개 십리벚꽃길,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,2,해인사,합천 가야산,SUNROAD,,가야산 1084번,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,2,범어사,부산 금정산,SUNROAD,,금정산성로,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,2,대원사,산청 지리산,SUNROAD,,지리산 유평계곡길,Y,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,3,옥천사,고성 연화산,SUNROAD,,연화산,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,3,내원정사,부산 서구 엄광산,SUNROAD,,엄광산,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,3,선암사,부산 부산진구 백양산,SUNROAD,,백양산 순환로,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,4,표충사,밀양 재약산,SUNROAD,,얼음골·가지산 69번,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,4,성주사,창원 불모산,SUNROAD,,창원 불모산,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,4,문수암,산청,SUNROAD,,마근담 계곡길,Y,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,5,용문사,남해 호구산,SUNROAD,,물미해안도로,,
+BUSAN_GYEONGNAM,부산/경남,GYEONGNAM_W,경남 서부,5,용화사,통영 미륵산,SUNROAD,,미륵산,,
+BUSAN_GYEONGNAM,부산/경남,BUSAN_E,부산·동부,5,홍법사,부산 금정구 두구동,SUNROAD,,부산 외곽 기점,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,1,동화사,대구 팔공산,SUNROAD,,팔공산 순환도로·한티재,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,1,용문사,예천 소백산,SUNROAD,,용문산 진입로,Y,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,2,은해사,영천 팔공산,SUNROAD,,팔공산 동편,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,2,축서사,봉화 문수산,SUNROAD,,문수산,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,2,봉정사,안동 천등산,SUNROAD,,안동 천등산,Y,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,3,희방사,영주 소백산,SUNROAD,,죽령,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,3,고운사,의성 등운산,SUNROAD,,복원 완료 후 개방 예정,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,4,보경사,포항 내연산,SUNROAD,,내연산·7번국도,Y,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,4,기림사,경주 함월산,SUNROAD,,추령재,Y,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,5,직지사,김천 황악산,SUNROAD,,추풍령,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,5,골굴사,경주 함월산,SUNROAD,,추령재,,
+DAEGU_GYEONGBUK,대구/경북,DAEGU_GYEONGBUK,대구/경북,5,도리사,구미 태조산,SUNROAD,,구미 해평 낙동강변,Y,
+GANGWON,강원,GANGWON_COAST,강원 해안,1,현덕사,강릉 연곡,SUNROAD,,강릉 연곡,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,1,망경산사,영월 망경대산,SUNROAD,,영월 망경대산 임도,Y,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,4,월정사,평창 오대산,SUNROAD,,진고개·운두령,,"[12라인] 2구→4구(v3.2 배정 복원, 전나무숲길 1km=포행)"
+GANGWON,강원,GANGWON_INLAND,강원 내륙,2,백담사,인제 설악산,SUNROAD,,한계령,,
+GANGWON,강원,GANGWON_COAST,강원 해안,2,보현사,강릉,SUNROAD,,대관령 옛길,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,3,청평사,춘천 오봉산,SUNROAD,,배후령·소양강댐길,Y,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,3,명주사,원주 신림,SUNROAD,,원주 신림,Y,
+GANGWON,강원,GANGWON_COAST,강원 해안,3,삼화사,동해 두타산,SUNROAD,,백복령,,"[12라인] 4구→3구(v3.2 배정 복원, 국행수륙재=절제)"
+GANGWON,강원,GANGWON_COAST,강원 해안,4,화암사,고성 설악산 신선봉,SUNROAD,,미시령 옛길,,
+GANGWON,강원,GANGWON_COAST,강원 해안,4,용연사,강릉 사천,SUNROAD,,강릉 사천,,
+GANGWON,강원,GANGWON_COAST,강원 해안,5,신흥사,속초 설악산,SUNROAD,,한계령·미시령,,
+GANGWON,강원,GANGWON_COAST,강원 해안,5,건봉사,고성,SUNROAD,,진부령,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,5,구룡사,원주 치악산,SUNROAD,,치악재,,
+GANGWON,강원,GANGWON_INLAND,강원 내륙,5,법흥사,영월 사자산,SUNROAD,,솔치재,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,1,백양사,장성 백암산,SUNROAD,,백암산,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,1,대흥사,해남 두륜산,SUNROAD,,두륜산,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,1,백련사,강진 만덕산,SUNROAD,,만덕산·다산초당길,Y,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,2,화엄사,구례 지리산,SUNROAD,,성삼재·정령치,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,2,도갑사,영암 월출산,SUNROAD,,월출산 13번국도,Y,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,2,송광사,순천 조계산,SUNROAD,,조계산 접근로,Y,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,3,증심사,광주 무등산,SUNROAD,,무등산 옛길,Y,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,3,운주사,화순,SUNROAD,,화순 천태로,Y,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,3,무위사,강진 월출산,SUNROAD,,월출산 남면,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,4,천은사,구례 지리산,SUNROAD,,노고단,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,4,무각사,광주 서구,SUNROAD,,광주 도심 기점,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,4,대원사,보성 천봉산,SUNROAD,,주월산·녹차밭길,Y,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,5,미황사,해남 달마산,SUNROAD,,땅끝 해안도로,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,5,향일암,여수 돌산,SUNROAD,,돌산대교·해안로,,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,5,불갑사,영광 모악산,SUNROAD,,백수해안도로,,
+JEONBUK,전북,JEONBUK,전북,1,실상사,남원 지리산,SUNROAD,,정령치,,
+JEONBUK,전북,JEONBUK,전북,2,송광사,완주 종남산,SUNROAD,,위봉산성길·소양,Y,
+JEONBUK,전북,JEONBUK,전북,2,귀정사,남원 산동,SUNROAD,,남원 산동,Y,
+JEONBUK,전북,JEONBUK,전북,3,내소사,부안 변산,SUNROAD,,변산 해안도로 30번,,
+JEONBUK,전북,JEONBUK,전북,3,개암사,부안 능가산,SUNROAD,,변산 상서,,
+JEONBUK,전북,JEONBUK,전북,4,안국사,무주 적상산,SUNROAD,,적상산 산성도로,,
+JEONBUK,전북,JEONBUK,전북,4,금당사,진안 마이산,SUNROAD,,마이산,Y,
+JEONBUK,전북,JEONBUK,전북,5,선운사,고창 도솔산,SUNROAD,,질마재·소요산,Y,
+JEONBUK,전북,JEONBUK,전북,5,금산사,김제 모악산,SUNROAD,,모악산 순환로,Y,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,1,영평사,세종 장군산,SUNROAD,,장군산,Y,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,1,학림사,공주 계룡산 반포,SUNROAD,,계룡산 반포,,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,2,마곡사,공주 태화산,SUNROAD,,태화산,Y,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,2,수덕사,예산 덕숭산,SUNROAD,,덕산·해미 순환,Y,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,3,무량사,부여 만수산,SUNROAD,,만수산,Y,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,3,서광사,서산 부춘산,SUNROAD,,서산 부춘산,,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,4,갑사,공주 계룡산,SUNROAD,,계룡산 도로,,
+CHUNGNAM_SEJONG,충남/세종,CHUNGNAM_SEJONG,충남/세종,5,부석사,서산 도비산,SUNROAD,,천수만 해안,,
+CHUNGBUK,충북,CHUNGBUK,충북,1,미륵대흥사,단양 황정산,SUNROAD,,황정산,,
+CHUNGBUK,충북,CHUNGBUK,충북,2,석종사,충주 직동,SUNROAD,,충주 직동,,
+CHUNGBUK,충북,CHUNGBUK,충북,3,반야사,영동 백화산,SUNROAD,,백화산,,
+CHUNGBUK,충북,CHUNGBUK,충북,4,용화사,청주,SUNROAD,,도심 기점,Y,
+CHUNGBUK,충북,CHUNGBUK,충북,5,법주사,보은 속리산,SUNROAD,,말티재 12굽이,,
+CHUNGBUK,충북,CHUNGBUK,충북,5,영국사,영동 천태산,SUNROAD,,천태산,,
+SEOUL,서울,SEOUL,서울,1,진관사,은평 북한산,SUNROAD,,북한산 은평 진입로,Y,
+SEOUL,서울,SEOUL,서울,2,화계사,강북 수유동,SUNROAD,,북한산 수유,,
+SEOUL,서울,SEOUL,서울,2,국제선센터,양천 목동,SUNROAD,,서남권 기점,,
+SEOUL,서울,SEOUL,서울,3,길상사,성북 성북동,SUNROAD,,북악스카이웨이·삼청,Y,
+SEOUL,서울,SEOUL,서울,3,금선사,종로 구기동,SUNROAD,,북한산 구기,,
+SEOUL,서울,SEOUL,서울,4,경국사,성북 정릉,SUNROAD,,정릉·북악,Y,
+SEOUL,서울,SEOUL,서울,4,수국사,은평 갈현동,SUNROAD,,서오릉로,,
+SEOUL,서울,SEOUL,서울,5,조계사,종로 견지동,SUNROAD,,도심 기점,,
+SEOUL,서울,SEOUL,서울,5,도선사,강북 우이동,SUNROAD,,우이동,,
+SEOUL,서울,SEOUL,서울,5,묘각사,종로 숭인동,SUNROAD,,종로 숭인,,[Q2 확정] 제외 — 시드 미투입
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,1,봉선사,남양주 진접,SUNROAD,,광릉숲,,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,1,봉녕사,수원 팔달,SUNROAD,,광교산,Y,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,1,수도사,평택,SUNROAD,,평택 기점,Y,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,2,연등국제선원,강화,SUNROAD,,강화 해안순환도로,Y,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,2,법륜사,용인 원삼,SUNROAD,,원삼 좌전고개,Y,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,2,봉인사,남양주 진건,SUNROAD,,남양주 진건,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,3,회암사,양주 천보산,SUNROAD,,천보산,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,3,묘적사,남양주 와부,SUNROAD,,남양주 수레로·천마산,Y,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,3,백련사,가평 축령산,SUNROAD,,축령산,Y,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,4,용문사,양평 용문산,SUNROAD,,용문산·6번국도,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,4,흥국사,고양 노고산,SUNROAD,,노고산,,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,4,연주암,과천 관악산,SUNROAD,,관악산,,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,5,신륵사,여주,SUNROAD,,남한강변,,
+GYEONGGI,경기/인천,GYEONGGI_N,경기 북부·인천,5,전등사,강화 정족산,SUNROAD,,강화 해안순환도로,,
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,5,용주사,화성 송산동,SUNROAD,,화성 융건릉 기점,Y,
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,2,능가사,고흥 팔영산,MAIN,★ 2023 보물 목조사천왕상(17세기 가장 이른). 평지가람·무료주차,,,[Q4 확정] 복귀
+JEONNAM_GWANGJU,전남/광주,JEONNAM_GWANGJU,전남/광주,3,흥국사,여수 영취산,MAIN,★ 2023 보물 소조사천왕상. 임진왜란 의승수군,,,[Q4 확정] 복귀
+GANGWON,강원,GANGWON_INLAND,강원 내륙,1,수타사,홍천 공작산,MAIN,★ 2023 보물 소조사천왕상(최북단). 덕천천 산소길 3.8km,,,[Q4 확정] 복귀
+GYEONGGI,경기/인천,GYEONGGI_S,경기 남부,3,칠장사,안성 칠현산,MAIN,경기 남부 3구 성립용 복귀. 조용한 규모·소조사천왕상·대웅전 보물,,,[12라인 확정] v3.2 복귀
+GANGWON,강원,GANGWON_COAST,강원 해안,4,천은사,삼척 두타산,MAIN,강원 해안 4구 보강. 이승휴 제왕운기 저술지·계곡 산책로,,,[12라인 확정] v3.2 복귀 (구례 천은사 아님)

@@ -1,0 +1,51 @@
+package com.templestamp.ebook;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+/**
+ * ebook 테이블 도메인 클래스 — 전자책 생성 큐.
+ * <p>
+ * 카탈로그가 아니라 대기열이다. 완주 시점에 QUEUED 로 한 건 넣어 두면 외부 조판 워커가
+ * BUILDING → READY 로 옮긴다. 조판 자체는 시간이 걸리는 작업이라 요청 스레드에서 하지 않는다.
+ */
+@Getter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Ebook {
+
+    /* ebook_type */
+    public static final String PILGRIMAGE = "PILGRIMAGE";   // 코스 완주본
+    public static final String INTERIM = "INTERIM";         // 3코스 중간본
+    public static final String HOEHYANG = "HOEHYANG";       // 전 사찰 회향본
+
+    /* status */
+    public static final String QUEUED = "QUEUED";
+    public static final String BUILDING = "BUILDING";
+    public static final String READY = "READY";
+    public static final String FAILED = "FAILED";
+
+    private Long ebookId;
+    private Long userId;
+    private Long pilgrimageId;
+    private String ebookType;
+    private String status;
+    private String pdfKey;
+    private String epubKey;
+    private String failReason;
+    private Integer retryCount;
+    private LocalDateTime buildingStartedAt;
+    private LocalDateTime queuedAt;
+    private LocalDateTime builtAt;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+
+    public boolean isReady() { return READY.equals(status); }
+
+    public boolean isHoehyang() { return HOEHYANG.equals(ebookType); }
+}

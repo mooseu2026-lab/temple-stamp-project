@@ -1,0 +1,210 @@
+package com.templestamp.certificate;
+
+import com.templestamp.certificate.dto.CertificateVerifyResponse;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * 인증서 규칙(챕터 7 §3). 번호·상태·공개 응답 셋을 본다.
+ * <p>
+ * 번호는 이 도메인에서 가장 되돌리기 어려운 값이다 — 한 번 남에게 보여 준 번호는 회수해도
+ * 계속 조회돼야 하고, 다른 사람에게 다시 나가서도 안 된다. 그래서 동시 발행을 실제로 태워 본다.
+ */
+@SpringBootTest
+class CertificateServiceTest {
+
+    private static final String EMAIL = "cert-test@test.com";
+    private static final long COURSE_ID = 1L;
+
+    @Autowired CertificateService certificateService;
+    @Autowired CertificateMapper certificateMapper;
+    @Autowired JdbcTemplate jdbc;
+
+    private long userId;
+
+    @BeforeEach
+    void setUp() {
+        cleanUp();
+        jdbc.update("""
+                INSERT INTO users (email, password, nickname, role, tier, locale)
+                VALUES (?, '$2a$10$FVVkQmIpuwsYytWwqTLv7exlCfmLsSNovNp13Bo6m.DrG8cLgZj1a', '남산', 'USER', 'AGE30', 'ko')
+                """, EMAIL);
+        userId = jdbc.queryForObject("SELECT user_id FROM users WHERE email = ?", Long.class, EMAIL);
+    }
+
+    @AfterEach
+    void tearDown() {
+        cleanUp();
+    }
+
+    @Test
+    @DisplayName("번호는 PG-yyyy-6자리다")
+    void serial_format() {
+        Certificate cert = certificateService.issueForPilgrimage(userId, newPilgrimage());
+
+        assertThat(cert.getSerialNo()).matches("^PG-\\d{4}-\\d{6}$");
+        assertThat(cert.getStatus()).isEqualTo(Certificate.VALID);
+    }
+
+    @Test
+    @DisplayName("같은 완주로 다시 발행하면 새로 만들지 않고 있던 것을 준다")
+    void issue_is_idempotent_per_pilgrimage() {
+        long pilgrimageId = newPilgrimage();
+        Certificate first = certificateService.issueForPilgrimage(userId, pilgrimageId);
+        Certificate again = certificateService.issueForPilgrimage(userId, pilgrimageId);
+
+        assertThat(again.getSerialNo()).isEqualTo(first.getSerialNo());
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM certificate WHERE pilgrimage_id = ?", Integer.class, pilgrimageId))
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("열 장을 동시에 발행해도 번호가 겹치지 않는다")
+    void concurrent_issue_does_not_duplicate_serials() throws Exception {
+        int threads = 10;
+        List<Long> pilgrimages = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            pilgrimages.add(newPilgrimage());
+        }
+
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CyclicBarrier gate = new CyclicBarrier(threads);   // 열 스레드를 같은 순간에 풀어 준다
+        try {
+            List<Future<String>> futures = new ArrayList<>();
+            for (Long pilgrimageId : pilgrimages) {
+                Callable<String> task = () -> {
+                    gate.await(10, TimeUnit.SECONDS);
+                    return certificateService.issueForPilgrimage(userId, pilgrimageId).getSerialNo();
+                };
+                futures.add(pool.submit(task));
+            }
+            List<String> serials = new ArrayList<>();
+            for (Future<String> f : futures) {
+                serials.add(f.get(30, TimeUnit.SECONDS));
+            }
+
+            assertThat(serials).hasSize(threads);
+            assertThat(serials).doesNotHaveDuplicates();
+            assertThat(serials).allMatch(s -> s.matches("^PG-\\d{4}-\\d{6}$"));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("회수하면 행이 남고, 두 번째 회수는 아무 일도 하지 않는다")
+    void revoke_keeps_the_row_and_is_idempotent() {
+        long pilgrimageId = newPilgrimage();
+        Certificate cert = certificateService.issueForPilgrimage(userId, pilgrimageId);
+
+        certificateService.revokeForPilgrimage(pilgrimageId);
+        String firstRevokedAt = jdbc.queryForObject(
+                "SELECT revoked_at FROM certificate WHERE serial_no = ?", String.class, cert.getSerialNo());
+
+        certificateService.revokeForPilgrimage(pilgrimageId);   // 다시 불러도 회수 시각이 덮이지 않는다
+
+        assertThat(certificateMapper.findRowBySerial(cert.getSerialNo())).isPresent();
+        assertThat(jdbc.queryForObject(
+                "SELECT status FROM certificate WHERE serial_no = ?", String.class, cert.getSerialNo()))
+                .isEqualTo("REVOKED");
+        assertThat(jdbc.queryForObject(
+                "SELECT revoked_at FROM certificate WHERE serial_no = ?", String.class, cert.getSerialNo()))
+                .isEqualTo(firstRevokedAt);
+    }
+
+    @Test
+    @DisplayName("회수한 뒤 다시 발행하면 새 번호가 나오고 옛 번호는 무효로 남는다")
+    void re_issue_after_revoke_uses_a_new_serial() {
+        long pilgrimageId = newPilgrimage();
+        String first = certificateService.issueForPilgrimage(userId, pilgrimageId).getSerialNo();
+        certificateService.revokeForPilgrimage(pilgrimageId);
+        String second = certificateService.issueForPilgrimage(userId, pilgrimageId).getSerialNo();
+
+        assertThat(second).isNotEqualTo(first);
+        assertThat(certificateService.verify(first).status()).isEqualTo("REVOKED");
+        assertThat(certificateService.verify(second).status()).isEqualTo("VALID");
+    }
+
+    @Test
+    @DisplayName("공개 진위 확인에는 신원을 되짚을 값이 하나도 실리지 않는다")
+    void verify_carries_no_personal_data() {
+        long pilgrimageId = newPilgrimage();
+        Certificate cert = certificateService.issueForPilgrimage(userId, pilgrimageId);
+
+        CertificateVerifyResponse res = certificateService.verify(cert.getSerialNo());
+
+        assertThat(res.holderMasked()).isEqualTo("남*");        // 2자 이름
+        assertThat(res.serialNo()).isEqualTo(cert.getSerialNo());
+        assertThat(res.status()).isEqualTo("VALID");
+        // record 의 구성 요소가 곧 응답 필드다. 늘어나면 여기서 걸린다.
+        assertThat(CertificateVerifyResponse.class.getRecordComponents())
+                .extracting(java.lang.reflect.RecordComponent::getName)
+                .containsExactlyInAnyOrder("serialNo", "certType", "status",
+                        "courseName", "holderMasked", "issuedAt", "revokedAt");
+    }
+
+    @Test
+    @DisplayName("닉네임 마스킹 — 2자는 앞 한 자만 남고, 별표 개수는 길이를 알려 주지 않는다")
+    void masking_rules() {
+        assertThat(CertificateVerifyResponse.maskNickname("남산")).isEqualTo("남*");
+        assertThat(CertificateVerifyResponse.maskNickname("순례자")).isEqualTo("순*자");
+        assertThat(CertificateVerifyResponse.maskNickname("아주긴닉네임입니다")).isEqualTo("아*다");
+        assertThat(CertificateVerifyResponse.maskNickname("김")).isEqualTo("*");
+        assertThat(CertificateVerifyResponse.maskNickname(null)).isEqualTo("*");
+    }
+
+    /* ---------------- 내부 ---------------- */
+
+    /**
+     * 인증서의 근거가 될 순례 행. 코스마다 하나씩만 둘 수 있어(uk_pilgrimage) 코스를 옮겨 가며 만든다.
+     * <p>
+     * 코스 번호를 <b>계산하지 않고 꺼내 쓴다.</b> 예전에는 "37~48 은 시드 코스" 라고 적어 두었는데
+     * 그 번호는 개발 DB 의 auto_increment 가 그렇게 흘렀을 뿐이고, 새로 만든 DB 에서는 2~13 이다.
+     * 최종 점검 F 의 빈 DB 재구축에서 이 가정이 깨져 FK 오류로 드러났다.
+     */
+    private List<Long> courseIds;
+    private int nextCourseOffset = 0;
+
+    private long newPilgrimage() {
+        if (courseIds == null) {
+            courseIds = jdbc.queryForList("SELECT course_id FROM course ORDER BY course_id", Long.class);
+        }
+        long courseId = nextCourseOffset == 0 ? COURSE_ID : courseIds.get(nextCourseOffset % courseIds.size());
+        nextCourseOffset++;
+        jdbc.update("INSERT INTO pilgrimage (user_id, course_id, status) VALUES (?, ?, 'IN_PROGRESS')",
+                userId, courseId);
+        return jdbc.queryForObject(
+                "SELECT pilgrimage_id FROM pilgrimage WHERE user_id = ? AND course_id = ?",
+                Long.class, userId, courseId);
+    }
+
+    private void cleanUp() {
+        String in = "(SELECT user_id FROM users WHERE email = '" + EMAIL + "')";
+        // 배송 정보가 user_reward 를 RESTRICT 로 잡는다 — 먼저 지운다(챕터 7 보강 B-4).
+        jdbc.update("DELETE FROM reward_claim WHERE user_reward_id IN (SELECT user_reward_id FROM user_reward WHERE user_id IN " + in + ")");
+        jdbc.update("DELETE FROM user_reward WHERE user_id IN " + in);
+        jdbc.update("DELETE FROM certificate WHERE user_id IN " + in);
+        jdbc.update("DELETE FROM ebook WHERE user_id IN " + in);
+        jdbc.update("DELETE FROM stamp WHERE pilgrimage_id IN (SELECT pilgrimage_id FROM pilgrimage WHERE user_id IN " + in + ")");
+        jdbc.update("DELETE FROM pilgrimage WHERE user_id IN " + in);
+        jdbc.update("DELETE FROM user_agreement WHERE user_id IN " + in);
+        jdbc.update("DELETE FROM users WHERE email = '" + EMAIL + "'");
+    }
+}

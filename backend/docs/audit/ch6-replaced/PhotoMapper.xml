@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.photo.PhotoMapper">
+
+    <sql id="columns">
+        photo_id, user_id, site_id, file_key, has_other_face, is_private, created_at, updated_at
+    </sql>
+
+    <!-- 같은 사찰에 다시 올리면 키를 갈아 끼운다. 사찰당 한 장이라는 규칙을 DB가 지킨다. -->
+    <insert id="upsert" parameterType="com.templestamp.photo.Photo"
+            useGeneratedKeys="true" keyProperty="photoId">
+        INSERT INTO photo (user_id, site_id, file_key, has_other_face, is_private)
+        VALUES (#{userId}, #{siteId}, #{fileKey}, #{hasOtherFace}, #{isPrivate})
+        ON DUPLICATE KEY UPDATE
+            file_key       = VALUES(file_key),
+            has_other_face = VALUES(has_other_face)
+    </insert>
+
+    <select id="findByUserAndSite" resultType="com.templestamp.photo.Photo">
+        SELECT <include refid="columns"/>
+        FROM photo
+        WHERE user_id = #{userId} AND site_id = #{siteId}
+    </select>
+
+    <select id="findByUserId" resultType="com.templestamp.photo.Photo">
+        SELECT <include refid="columns"/>
+        FROM photo
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+
+    <update id="updatePrivacy">
+        UPDATE photo SET is_private = #{isPrivate} WHERE photo_id = #{photoId}
+    </update>
+
+</mapper>

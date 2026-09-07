@@ -1,0 +1,42 @@
+package com.templestamp.ebook;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+/**
+ * print_order 테이블 도메인 클래스 — 회향본 소량 인쇄 신청.
+ * 사용자-전자책 조합은 유일하다(uk_print_user_ebook 은 없지만 서비스가 중복을 막는다).
+ */
+@Getter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class PrintOrder {
+
+    public static final String REQUESTED = "REQUESTED";
+    public static final String CONFIRMED = "CONFIRMED";
+    public static final String SHIPPED = "SHIPPED";
+    public static final String CANCELED = "CANCELED";
+
+    private Long printOrderId;
+    private Long userId;
+    private Long ebookId;
+    private Integer quantity;
+    private String recipientName;
+    private String recipientPhone;
+    private String postalCode;
+    private String address;
+    private String addressDetail;
+    private String status;
+    private String note;
+    private String trackingNo;
+    private LocalDateTime requestedAt;
+    private LocalDateTime updatedAt;
+
+    /** 신청 직후에만 사용자가 취소할 수 있다. 인쇄가 시작되면 되돌릴 수 없다. */
+    public boolean isCancelable() { return REQUESTED.equals(status); }
+}

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.thinkbox.ThinkboxMapper">
+
+    <sql id="columns">
+        thinkbox_id, user_id, body, source, stamp_id, is_edited,
+        course_id, site_id, is_private, created_at, updated_at
+    </sql>
+
+    <sql id="rowSelect">
+        SELECT t.thinkbox_id,
+               t.user_id,
+               u.nickname,
+               t.body        AS content,
+               t.source,
+               t.stamp_id,
+               t.is_edited,
+               t.course_id,
+               c.name AS course_name,
+               t.site_id,
+               s.name AS site_name,
+               t.is_private AS is_private,
+               t.created_at,
+               t.updated_at
+        FROM thinkbox t
+                 JOIN users u ON u.user_id = t.user_id
+                 LEFT JOIN course c ON c.course_id = t.course_id
+                 LEFT JOIN site s ON s.site_id = t.site_id
+    </sql>
+
+    <insert id="save" parameterType="com.templestamp.thinkbox.Thinkbox"
+            useGeneratedKeys="true" keyProperty="thinkboxId">
+        INSERT INTO thinkbox (user_id, body, source, stamp_id, course_id, site_id, is_private)
+        VALUES (#{userId}, #{body}, #{source}, #{stampId}, #{courseId}, #{siteId}, #{isPrivate})
+    </insert>
+
+    <!--
+      도장 하나에 사본 하나. 이미 있으면 조용히 넘어간다.
+      도장의 원본 문장은 stamp.user_sentence 에 그대로 있고, 사용자가 이미 사본을 고쳐 뒀을 수
+      있으므로 여기서 본문을 덮어쓰지 않는다.
+    -->
+    <insert id="saveFromMission" parameterType="com.templestamp.thinkbox.Thinkbox">
+        INSERT IGNORE INTO thinkbox (user_id, body, source, stamp_id, course_id, site_id, is_private)
+        VALUES (#{userId}, #{body}, 'MISSION', #{stampId}, #{courseId}, #{siteId}, #{isPrivate})
+    </insert>
+
+    <select id="findById" resultType="com.templestamp.thinkbox.Thinkbox">
+        SELECT <include refid="columns"/> FROM thinkbox WHERE thinkbox_id = #{thinkboxId}
+    </select>
+
+    <select id="findByStampId" resultType="com.templestamp.thinkbox.Thinkbox">
+        SELECT <include refid="columns"/> FROM thinkbox WHERE stamp_id = #{stampId}
+    </select>
+
+    <!--
+      정렬 값은 Service·Controller 가 date·course·site 셋으로 좁혀 놓는다.
+      ${} 를 쓰지 않고 choose 로 못 박는 이유는 그 셋 밖의 문자열이 SQL 에 닿지 않게 하기 위해서다.
+      코스·사찰 정렬에서도 마지막 기준은 시간이다 — 같은 코스 안에서 순서가 흔들리면 페이지가 어긋난다.
+    -->
+    <select id="findByUserId" resultType="com.templestamp.thinkbox.dto.ThinkboxRow">
+        <include refid="rowSelect"/>
+        WHERE t.user_id = #{userId}
+        <choose>
+            <when test="sort == 'course'">ORDER BY t.course_id IS NULL, t.course_id, t.created_at DESC</when>
+            <when test="sort == 'site'">ORDER BY t.site_id IS NULL, t.site_id, t.created_at DESC</when>
+            <otherwise>ORDER BY t.created_at DESC</otherwise>
+        </choose>
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="findDirectBySite" resultType="com.templestamp.thinkbox.Thinkbox">
+        SELECT <include refid="columns"/>
+        FROM thinkbox
+        WHERE user_id = #{userId} AND site_id = #{siteId} AND source = 'DIRECT'
+        LIMIT 1
+    </select>
+
+    <!--
+      여섯 달 전 오늘. 날짜만 본다(시각은 무관) — 서버 시간대 기준이라
+      MySQL 의 time_zone 이 UTC 면 하루가 밀린다(정리.md §5-2 9번).
+      같은 날 여러 건이면 가장 이른 것 하나.
+    -->
+    <select id="findFlashback" resultType="com.templestamp.thinkbox.dto.ThinkboxRow">
+        <include refid="rowSelect"/>
+        WHERE t.user_id = #{userId}
+          AND DATE(t.created_at) = DATE(CURDATE() - INTERVAL 6 MONTH)
+        ORDER BY t.created_at
+        LIMIT 1
+    </select>
+
+    <select id="countByUserId" resultType="long">
+        SELECT COUNT(*) FROM thinkbox WHERE user_id = #{userId}
+    </select>
+
+    <!-- 본문이 실제로 바뀐 경우에만 is_edited 를 켠다. 공개 설정만 바꾼 건 수정이 아니다. -->
+    <update id="update">
+        UPDATE thinkbox
+        SET is_edited  = CASE WHEN body &lt;&gt; #{body} THEN 1 ELSE is_edited END,
+            body       = #{body},
+            is_private = #{isPrivate}
+        WHERE thinkbox_id = #{thinkboxId}
+        <!--
+            ★ 대입 순서가 의미를 바꾼다. MySQL 은 SET 절을 왼쪽부터 평가하고, 뒤에 오는 식은
+              앞에서 이미 바뀐 값을 본다(표준 SQL 과 다른 점이다). body 를 먼저 대입하면
+              아래 CASE 의 body 가 이미 #{body} 라 비교가 항상 거짓이 되고, is_edited 가 영영 0 이다.
+              is_edited 를 먼저 두어 CASE 가 변경 전 body 를 읽게 한다.
+              users.recordLoginFail 이 5회가 아니라 4회에 잠기던 것과 같은 원인이다.
+        -->
+    </update>
+
+    <delete id="delete">
+        DELETE FROM thinkbox WHERE thinkbox_id = #{thinkboxId}
+    </delete>
+
+    <!--
+      수록 조건은 둘 다 필요하다. 글 하나만 공개로 돌려 놨어도 전자책 공개 약관에 동의하지
+      않았다면 싣지 않는다.
+    -->
+    <select id="findPublishable" resultType="com.templestamp.thinkbox.dto.ThinkboxRow">
+        <include refid="rowSelect"/>
+        WHERE t.user_id = #{userId}
+          AND t.is_private = 0
+          AND EXISTS (SELECT 1
+                      FROM user_agreement ua
+                      WHERE ua.user_id = t.user_id
+                        AND ua.agreement_type = 'EBOOK_PUBLIC'
+                        AND ua.withdrawn_at IS NULL)
+        <if test="courseId != null">
+            AND t.course_id = #{courseId}
+        </if>
+        ORDER BY t.created_at
+    </select>
+
+</mapper>

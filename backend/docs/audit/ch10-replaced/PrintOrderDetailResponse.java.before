@@ -1,0 +1,36 @@
+package com.templestamp.ebook.dto;
+
+import java.time.LocalDateTime;
+
+/**
+ * 인쇄 주문 1건 조회(챕터 9 §4). <b>본인만</b> 볼 수 있고 배송정보가 함께 실린다.
+ * <p>
+ * 목록({@link PrintOrderResponse})과 굳이 나눈 이유 — 목록은 주소를 <b>가져오지 않고</b>,
+ * 단건은 가져온다. 한 DTO 에 null 로 섞어 두면 "언제 채워지는가" 를 호출부마다 다시 물어야 한다.
+ */
+public record PrintOrderDetailResponse(
+        Long printOrderId,
+        Long ebookId,
+        String ebookType,
+        Integer quantity,
+        String status,
+        String trackingNo,
+        String cancelReason,
+        LocalDateTime requestedAt,
+        LocalDateTime updatedAt,
+        Shipping shipping
+) {
+    /** 배송정보. 본인 조회라 마스킹하지 않는다 — 자기 주소를 가려 주는 것은 도움이 되지 않는다. */
+    public record Shipping(String recipient, String phone, String postalCode,
+                           String address, String memo) {
+    }
+
+    public static PrintOrderDetailResponse of(PrintOrderRow row, PrintOrderAddress a) {
+        Shipping shipping = a == null ? null
+                : new Shipping(a.getRecipient(), a.getPhone(), a.getPostalCode(),
+                        a.getAddress(), a.getMemo());
+        return new PrintOrderDetailResponse(row.getPrintOrderId(), row.getEbookId(), row.getEbookType(),
+                row.getQuantity(), row.getStatus(), row.getTrackingNo(), row.getCancelReason(),
+                row.getRequestedAt(), row.getUpdatedAt(), shipping);
+    }
+}

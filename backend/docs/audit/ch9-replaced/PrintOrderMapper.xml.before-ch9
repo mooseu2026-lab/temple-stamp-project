@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.ebook.PrintOrderMapper">
+
+    <sql id="columns">
+        print_order_id, user_id, ebook_id, quantity, recipient_name, recipient_phone,
+        postal_code, address, address_detail, status, note, tracking_no,
+        requested_at, updated_at
+    </sql>
+
+    <sql id="rowSelect">
+        SELECT po.print_order_id,
+               po.user_id,
+               u.nickname,
+               po.ebook_id,
+               e.ebook_type,
+               po.quantity,
+               po.recipient_name,
+               po.recipient_phone,
+               po.postal_code,
+               po.address,
+               po.address_detail,
+               po.status,
+               po.note,
+               po.tracking_no,
+               po.requested_at,
+               po.updated_at
+        FROM print_order po
+                 JOIN users u ON u.user_id = po.user_id
+                 JOIN ebook e ON e.ebook_id = po.ebook_id
+    </sql>
+
+    <insert id="save" parameterType="com.templestamp.ebook.PrintOrder"
+            useGeneratedKeys="true" keyProperty="printOrderId">
+        INSERT INTO print_order (user_id, ebook_id, quantity, recipient_name, recipient_phone,
+                                 postal_code, address, address_detail, status, note)
+        VALUES (#{userId}, #{ebookId}, #{quantity}, #{recipientName}, #{recipientPhone},
+                #{postalCode}, #{address}, #{addressDetail}, 'REQUESTED', #{note})
+    </insert>
+
+    <select id="findById" resultType="com.templestamp.ebook.PrintOrder">
+        SELECT <include refid="columns"/> FROM print_order WHERE print_order_id = #{printOrderId}
+    </select>
+
+    <select id="findRowById" resultType="com.templestamp.ebook.dto.PrintOrderRow">
+        <include refid="rowSelect"/>
+        WHERE po.print_order_id = #{printOrderId}
+    </select>
+
+    <select id="findRowsByUserId" resultType="com.templestamp.ebook.dto.PrintOrderRow">
+        <include refid="rowSelect"/>
+        WHERE po.user_id = #{userId}
+        ORDER BY po.requested_at DESC
+    </select>
+
+    <!-- 취소된 신청은 재신청을 막지 않는다. -->
+    <select id="existsActive" resultType="int">
+        SELECT EXISTS (SELECT 1
+                       FROM print_order
+                       WHERE user_id = #{userId}
+                         AND ebook_id = #{ebookId}
+                         AND status &lt;&gt; 'CANCELED')
+    </select>
+
+    <select id="findRowsForAdmin" resultType="com.templestamp.ebook.dto.PrintOrderRow">
+        <include refid="rowSelect"/>
+        <where>
+            <if test="status != null and status != ''">
+                po.status = #{status}
+            </if>
+        </where>
+        ORDER BY po.requested_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countForAdmin" resultType="long">
+        SELECT COUNT(*)
+        FROM print_order
+        <where>
+            <if test="status != null and status != ''">
+                status = #{status}
+            </if>
+        </where>
+    </select>
+
+    <update id="updateStatus">
+        UPDATE print_order
+        SET status      = #{status},
+            tracking_no = COALESCE(#{trackingNo}, tracking_no)
+        WHERE print_order_id = #{printOrderId}
+    </update>
+
+</mapper>

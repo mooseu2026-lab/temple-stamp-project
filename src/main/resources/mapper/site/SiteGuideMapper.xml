@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.site.SiteGuideMapper">
+
+    <!--
+      ★ se.site_id 조건은 반드시 ON 절에 둔다.
+        WHERE se.site_id = #{siteId} 로 옮기면 se 가 NULL 인 행(= 이 절에 없는 요소)이
+        조건에서 탈락해 LEFT JOIN 이 INNER JOIN 처럼 동작한다. 그러면 없는 자리가 통째로
+        사라져 7자리 형식이 깨지고, 절마다 응답 길이가 달라진다.
+        SiteGuideServiceTest 가 "언제나 7건" 을 단언하므로 이 실수는 테스트에서 잡힌다.
+
+      순서 기준은 shrine_element.sort_no 하나뿐이다. site_element 에는 순서 컬럼이 없어
+      절마다 참배 순서가 달라질 여지가 아예 없다.
+    -->
+    <select id="findGuideRows" resultType="com.templestamp.site.dto.SiteGuideRow">
+        SELECT e.element_id,
+               e.code,
+               e.name,
+               e.sort_no,
+               e.meaning,
+               e.etiquette,
+               e.passage_meaning,
+               se.site_element_id,
+               se.local_name,
+               se.note
+        FROM shrine_element e
+        LEFT JOIN site_element se ON se.element_id = e.element_id
+                                 AND se.site_id = #{siteId}
+        ORDER BY e.sort_no
+    </select>
+
+</mapper>

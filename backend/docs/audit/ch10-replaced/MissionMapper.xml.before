@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.verse.MissionMapper">
+
+    <!-- [RULE] 관리자 저장은 UPSERT 만. 삭제 후 재삽입 금지 — 조합이 잠깐 비면 SITE-5001 -->
+    <!--        아래 upsert 가 ON DUPLICATE KEY UPDATE 다. 현행 유지이며 DELETE 문을 추가하지 않는다. -->
+
+    <sql id="columns">
+        mission_id, verse_no, tier, variant_no, body, origin_ref, review_status
+    </sql>
+
+    <select id="findUnseen" resultType="com.templestamp.verse.Mission">
+        SELECT <include refid="columns"/>
+        FROM mission m
+        WHERE m.verse_no = #{verseNo}
+          AND m.tier = #{tier}
+          AND NOT EXISTS (SELECT 1
+                          FROM task_seen ts
+                          WHERE ts.user_id = #{userId}
+                            AND ts.course_id = #{courseId}
+                            AND ts.mission_id = m.mission_id)
+        ORDER BY (m.review_status = 'REVIEWED') DESC, RAND()
+        LIMIT 1
+    </select>
+
+    <!-- 변형을 다 받아 본 경우의 대체안. 미션 없이 도장을 끝낼 수는 없으므로 하나는 반드시 준다. -->
+    <select id="findAny" resultType="com.templestamp.verse.Mission">
+        SELECT <include refid="columns"/>
+        FROM mission
+        WHERE verse_no = #{verseNo} AND tier = #{tier}
+        ORDER BY (review_status = 'REVIEWED') DESC, variant_no
+        LIMIT 1
+    </select>
+
+    <select id="findById" resultType="com.templestamp.verse.Mission">
+        SELECT <include refid="columns"/> FROM mission WHERE mission_id = #{missionId}
+    </select>
+
+    <insert id="upsert" parameterType="com.templestamp.verse.Mission"
+            useGeneratedKeys="true" keyProperty="missionId">
+        INSERT INTO mission (verse_no, tier, variant_no, body, origin_ref, review_status)
+        VALUES (#{verseNo}, #{tier}, #{variantNo}, #{body}, #{originRef}, #{reviewStatus})
+        ON DUPLICATE KEY UPDATE
+            body          = VALUES(body),
+            origin_ref    = VALUES(origin_ref),
+            review_status = VALUES(review_status)
+    </insert>
+
+    <select id="nextVariantNo" resultType="int">
+        SELECT COALESCE(MAX(variant_no), 0) + 1
+        FROM mission
+        WHERE verse_no = #{verseNo} AND tier = #{tier}
+    </select>
+
+</mapper>

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.ebook.PrintOrderMapper">
+
+    <sql id="columns">
+        print_order_id, user_id, ebook_id, quantity, status, note, tracking_no,
+        cancel_reason, needs_review, requested_at, updated_at
+    </sql>
+
+    <!--
+      본체만 읽는다. 배송정보는 print_order_address 에 있고 이 질의는 그 표를 조인하지 않는다 —
+      응답에서 지우는 것이 아니라 애초에 가져오지 않는다(챕터 9 §4 · 보안 S16 과 같은 원칙).
+    -->
+    <sql id="rowSelect">
+        SELECT po.print_order_id,
+               po.user_id,
+               u.nickname,
+               po.ebook_id,
+               e.ebook_type,
+               po.quantity,
+               po.status,
+               po.note,
+               po.tracking_no,
+               po.cancel_reason,
+               po.needs_review,
+               po.requested_at,
+               po.updated_at
+        FROM print_order po
+                 JOIN users u ON u.user_id = po.user_id
+                 JOIN ebook e ON e.ebook_id = po.ebook_id
+    </sql>
+
+    <insert id="save" parameterType="com.templestamp.ebook.PrintOrder"
+            useGeneratedKeys="true" keyProperty="printOrderId">
+        INSERT INTO print_order (user_id, ebook_id, quantity, status, note)
+        VALUES (#{userId}, #{ebookId}, #{quantity}, 'REQUESTED', #{note})
+    </insert>
+
+    <insert id="saveAddress" parameterType="com.templestamp.ebook.dto.PrintOrderAddress">
+        INSERT INTO print_order_address (print_order_id, recipient, phone, postal_code, address, memo)
+        VALUES (#{printOrderId}, #{recipient}, #{phone}, #{postalCode}, #{address}, #{memo})
+    </insert>
+
+    <select id="findAddress" resultType="com.templestamp.ebook.dto.PrintOrderAddress">
+        SELECT print_order_id AS printOrderId, recipient, phone,
+               postal_code AS postalCode, address, memo
+        FROM print_order_address WHERE print_order_id = #{printOrderId}
+    </select>
+
+    <select id="findById" resultType="com.templestamp.ebook.PrintOrder">
+        SELECT <include refid="columns"/> FROM print_order WHERE print_order_id = #{printOrderId}
+    </select>
+
+    <select id="findRowById" resultType="com.templestamp.ebook.dto.PrintOrderRow">
+        <include refid="rowSelect"/>
+        WHERE po.print_order_id = #{printOrderId}
+    </select>
+
+    <select id="findRowsByUserId" resultType="com.templestamp.ebook.dto.PrintOrderRow">
+        <include refid="rowSelect"/>
+        WHERE po.user_id = #{userId}
+        ORDER BY po.requested_at DESC
+    </select>
+
+    <!-- 취소된 신청은 재신청을 막지 않는다. -->
+    <select id="existsActive" resultType="int">
+        SELECT EXISTS (SELECT 1
+                       FROM print_order
+                       WHERE user_id = #{userId}
+                         AND ebook_id = #{ebookId}
+                         AND status &lt;&gt; 'CANCELED')
+    </select>
+
+    <!-- 사람이 봐야 하는 것(needs_review)이 맨 위로 온다. 그 다음은 오래 기다린 순. -->
+    <select id="findRowsForAdmin" resultType="com.templestamp.ebook.dto.PrintOrderRow">
+        <include refid="rowSelect"/>
+        <where>
+            <if test="status != null and status != ''">
+                po.status = #{status}
+            </if>
+        </where>
+        ORDER BY po.needs_review DESC, po.requested_at
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countForAdmin" resultType="long">
+        SELECT COUNT(*)
+        FROM print_order
+        <where>
+            <if test="status != null and status != ''">
+                status = #{status}
+            </if>
+        </where>
+    </select>
+
+    <!--
+      전이는 <b>지금 상태를 조건에 걸어</b> 한 문장으로 끝낸다.
+      먼저 읽고 나중에 쓰면 그 사이에 다른 관리자가 같은 주문을 옮길 수 있다.
+      영향 행 수가 0 이면 그 전이가 허용되지 않았다는 뜻이다.
+    -->
+    <update id="transition">
+        UPDATE print_order
+        SET status        = #{next},
+            tracking_no   = COALESCE(#{trackingNo}, tracking_no),
+            cancel_reason = COALESCE(#{cancelReason}, cancel_reason)
+        WHERE print_order_id = #{printOrderId}
+          AND status IN
+          <foreach collection="allowedFrom" item="s" open="(" separator="," close=")">#{s}</foreach>
+    </update>
+
+    <!-- 탈퇴 연쇄(챕터 9 §2-5): 아직 확인 전이면 취소, 이미 움직였으면 사람이 볼 표시만 켠다. -->
+    <update id="cancelRequestedByUser">
+        UPDATE print_order
+        SET status = 'CANCELED', cancel_reason = '회원 탈퇴'
+        WHERE user_id = #{userId} AND status = 'REQUESTED'
+    </update>
+
+    <update id="flagReviewByUser">
+        UPDATE print_order
+        SET needs_review = 1
+        WHERE user_id = #{userId} AND status IN ('CONFIRMED','PRINTING','SHIPPED')
+    </update>
+
+    <!--
+      탈퇴 정리에서 <b>끝난 주문은 행째 지운다</b>. 취소된 주문은 더 볼 사람이 없고,
+      남겨 두면 그 주문이 붙든 전자책을 지울 수 없어 탈퇴한 사람의 PDF 가 그대로 남는다.
+      진행 중인 주문(CONFIRMED 이후)은 지우지 않는다 — 인쇄소가 아직 들고 있다.
+    -->
+    <delete id="deleteCanceledByUser">
+        DELETE FROM print_order WHERE user_id = #{userId} AND status = 'CANCELED'
+    </delete>
+
+    <delete id="deleteAddressByUser">
+        DELETE FROM print_order_address
+        WHERE print_order_id IN (SELECT print_order_id FROM print_order WHERE user_id = #{userId})
+    </delete>
+
+</mapper>

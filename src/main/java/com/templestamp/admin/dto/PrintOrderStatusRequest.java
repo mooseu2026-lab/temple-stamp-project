@@ -1,0 +1,28 @@
+package com.templestamp.admin.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
+/**
+ * 관리자가 신청 상태를 변경할 때 쓰는 DTO Record입니다.
+ * 송장번호는 배송(SHIPPED) 처리 시에만 필수이며 이 조건은 Service 에서 검사합니다.
+ * REQUESTED 로 되돌리는 변경은 허용하지 않으므로 변경 가능한 3개 값만 패턴으로 잠급니다.
+ * [사용 위치] AdminEbookController — @RequestBody @Valid
+ */
+public record PrintOrderStatusRequest(
+
+        @NotBlank(message = "변경할 상태를 입력해주세요.")
+        @Pattern(
+                regexp = "^(CONFIRMED|PRINTING|SHIPPED|DONE|CANCELED)$",
+                message = "상태는 CONFIRMED·PRINTING·SHIPPED·DONE·CANCELED 중 하나입니다."
+        )
+        String status,
+
+        @Size(max = 50, message = "송장번호는 50자 이하로 입력해주세요.")
+        String trackingNo,             // SHIPPED 일 때만 필수 — Service 검증
+
+        @Size(max = 200, message = "취소 사유는 200자 이하로 입력해주세요.")
+        String reason                  // CANCELED 일 때만 필수 — Service 검증
+) {
+}

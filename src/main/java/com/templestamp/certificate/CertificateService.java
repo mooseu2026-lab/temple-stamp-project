@@ -1,0 +1,198 @@
+package com.templestamp.certificate;
+
+import com.templestamp.certificate.dto.CertificateResponse;
+import com.templestamp.certificate.dto.CertificateRow;
+import com.templestamp.certificate.dto.CertificateVerifyResponse;
+import com.templestamp.global.config.EbookProperties;
+import com.templestamp.global.error.BusinessException;
+import com.templestamp.global.error.ErrorCode;
+import com.templestamp.upload.ObjectStorageClient;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class CertificateService {
+
+    private static final int SERIAL_RETRY = 3;
+    private static final String VERIFY_PATH = "/api/certificates/verify/";
+
+    /** 인증서 PDF 링크가 사는 시간(§3). 전자책과 같은 10분. */
+    private static final long DOWNLOAD_SECONDS = 600;
+
+    private final CertificateMapper certificateMapper;
+    private final SerialGenerator serialGenerator;
+    private final CertificatePdfBuilder certificatePdfBuilder;
+    private final ObjectStorageClient storageClient;
+    private final EbookProperties ebookProperties;
+
+    /**
+     * 코스 완주 인증서. <b>유효한</b> 것이 이미 있으면 그것을 그대로 돌려준다(재발급하지 않는다).
+     * 완주 처리가 재시도돼도 인증서가 두 장 생기지 않게 하기 위해서다.
+     * <p>
+     * 회수된 인증서는 이 조회에 걸리지 않는다 — 완주가 다시 성립하면 <b>새 번호로</b> 발행되고,
+     * 옛 번호는 REVOKED 로 남아 공개 진위 확인에서 계속 "무효" 로 조회된다(§2-4).
+     */
+    @Transactional
+    public Certificate issueForPilgrimage(Long userId, Long pilgrimageId) {
+        return certificateMapper.findValidByPilgrimageId(pilgrimageId)
+                .orElseGet(() -> create(userId, pilgrimageId, Certificate.PILGRIMAGE));
+    }
+
+    /** 회향 인증서. 유효한 것은 사용자당 한 장이며 순례에 매이지 않는다. */
+    @Transactional
+    public Certificate issueHoehyang(Long userId) {
+        return certificateMapper.findValidByUserAndType(userId, Certificate.HOEHYANG)
+                .orElseGet(() -> create(userId, null, Certificate.HOEHYANG));
+    }
+
+    /**
+     * 번호는 시퀀스에서 받는다. 겹칠 일이 없지만, 손으로 넣은 행 같은 예외에 대비해
+     * 유니크에 막히면 다음 번호를 받아 다시 시도한다.
+     */
+    private Certificate create(Long userId, Long pilgrimageId, String certType) {
+        for (int attempt = 0; attempt < SERIAL_RETRY; attempt++) {
+            Certificate certificate = Certificate.builder()
+                    .userId(userId)
+                    .pilgrimageId(pilgrimageId)
+                    .certType(certType)
+                    .status(Certificate.VALID)
+                    .serialNo(serialGenerator.next(certType))
+                    .build();
+            try {
+                certificateMapper.save(certificate);
+                return certificate;
+            } catch (DuplicateKeyException e) {
+                log.debug("인증서 일련번호 충돌, 다음 번호로 재시도: {}", certificate.getSerialNo());
+            }
+        }
+        throw new IllegalStateException("인증서 일련번호 생성에 %d회 실패했습니다.".formatted(SERIAL_RETRY));
+    }
+
+    public List<CertificateResponse> getMyCertificates(Long userId) {
+        return certificateMapper.findRowsByUserId(userId).stream()
+                .map(row -> CertificateResponse.of(row, verifyUrl(row.getSerialNo())))
+                .toList();
+    }
+
+    /**
+     * 공개 검증. 없는 번호는 이 DTO 를 만들지 않고 404 로 끊는다 —
+     * 존재하지 않는 번호에 200 을 주면 번호를 넣어 보며 유효 번호를 찾는 시도가 쉬워진다.
+     * <p>
+     * 회수된 번호는 <b>404 가 아니라 200 + REVOKED</b> 다. "이런 번호가 있었고 지금은 무효" 를
+     * 알려 주는 것이 진위 확인의 목적이다 — 404 로 감추면 위조본을 든 사람이 유리해진다(§3-4·함정 3).
+     */
+    public CertificateVerifyResponse verify(String serialNo) {
+        CertificateRow row = certificateMapper.findRowBySerial(serialNo)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CERT_4041));
+        return CertificateVerifyResponse.from(row);
+    }
+
+    /**
+     * 완주가 깨졌을 때(심사 반려 등) 그 완주의 인증서를 회수한다.
+     * 지우지 않는다 — 그 번호가 제3자에게 이미 제시됐을 수 있어 "유효하지 않음" 이 즉시 드러나야 한다.
+     */
+    @Transactional
+    public void revokeForPilgrimage(Long pilgrimageId) {
+        if (certificateMapper.revokeByPilgrimageId(pilgrimageId, Certificate.COMPLETION_CANCELED) > 0) {
+            log.warn("완주 취소로 인증서 회수. pilgrimageId={}", pilgrimageId);
+        }
+    }
+
+    /**
+     * 관리자 회수(챕터 7 보강 B-3). 사유는 필수이고 그대로 남는다 — 나중에 "왜 무효인가" 를
+     * 설명할 수 있어야 한다. 이미 회수된 것을 다시 회수하면 409 다. 연쇄(자동)와 달리
+     * 사람이 누른 것이라 "이미 그렇게 돼 있다" 를 조용히 넘기면 안 된다.
+     */
+    @Transactional
+    public void revokeByAdmin(Long certificateId, String reason) {
+        Certificate certificate = certificateMapper.findById(certificateId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CERT_4041));
+        if (certificateMapper.revokeById(certificateId, Certificate.ADMIN) == 0) {
+            throw new BusinessException(ErrorCode.CERT_4091);
+        }
+        log.warn("관리자 회수. certificateId={}, serial={}, 사유={}",
+                certificateId, certificate.getSerialNo(), reason);
+    }
+
+    /** 회향 조건이 깨졌을 때. 이미 회수돼 있으면 아무 일도 일어나지 않는다. */
+    @Transactional
+    public void revokeHoehyang(Long userId) {
+        if (certificateMapper.revokeByUserAndType(
+                userId, Certificate.HOEHYANG, Certificate.COMPLETION_CANCELED) > 0) {
+            log.warn("회향 조건이 깨져 회향 인증서 회수. userId={}", userId);
+        }
+    }
+
+    /* ---------------- 1장 조회 · PDF (챕터 9 §3) ---------------- */
+
+    /**
+     * 내 인증서 한 장. <b>VALID 일 때만</b> 다운로드 링크가 붙는다 —
+     * REVOKED 면 null 이고 에러가 아니다. 회수됐다는 사실 자체는 사용자가 알아야 한다.
+     * <p>
+     * PDF 는 <b>첫 조회 때</b> 만든다. 발행 시점에 만들면 아무도 내려받지 않는 파일까지
+     * 전부 만들어 두게 되고, 그중 상당수는 회수돼 버려진다.
+     */
+    @Transactional
+    public CertificateResponse getOne(Long userId, Long certificateId) {
+        CertificateRow row = certificateMapper.findRowById(certificateId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CERT_4041));
+        Certificate cert = certificateMapper.findById(certificateId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CERT_4041));
+        // 남의 인증서는 "없다" 고 답한다 — 번호를 넣어 보며 남의 것을 찾는 길을 막는다.
+        if (!cert.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.CERT_4041);
+        }
+
+        if (!Certificate.VALID.equals(cert.getStatus())) {
+            return CertificateResponse.of(row, verifyUrl(row.getSerialNo()), null);
+        }
+
+        String fileKey = cert.getFileKey();
+        if (fileKey == null || fileKey.isBlank()) {
+            fileKey = createPdf(cert, row);
+        }
+        return CertificateResponse.of(row, verifyUrl(row.getSerialNo()),
+                storageClient.presignGet(fileKey, DOWNLOAD_SECONDS));
+    }
+
+    /**
+     * PDF 를 만들어 저장하고 키를 적는다. 키를 적어 두는 자리({@code updateFileKey})는
+     * 챕터 7 부터 비워 둔 것이고, 여기서 처음 쓰인다.
+     */
+    private String createPdf(Certificate cert, CertificateRow row) {
+        String verify = publicVerifyUrl(row.getSerialNo());
+        byte[] pdf = certificatePdfBuilder.build(row, holderName(row), verify);
+        String key = "CERT/%d/%d.pdf".formatted(cert.getUserId(), cert.getCertificateId());
+        storageClient.put(key, pdf, "application/pdf");
+        certificateMapper.updateFileKey(cert.getCertificateId(), key);
+        log.info("인증서 PDF 생성. certificateId={}, key={}", cert.getCertificateId(), key);
+        return key;
+    }
+
+    /**
+     * 증서에 찍는 이름. 본인이 받는 파일이라 <b>마스킹하지 않는다</b> —
+     * 공개 진위 확인(/verify)의 마스킹과 목적이 다르다.
+     */
+    private String holderName(CertificateRow row) {
+        return row.getNickname() == null ? "회원" : row.getNickname();
+    }
+
+    /** QR 이 가리키는 절대 주소. 앱 밖의 사람이 찍는 것이라 상대 경로로는 열리지 않는다. */
+    private String publicVerifyUrl(String serialNo) {
+        String base = ebookProperties.publicBaseUrl();
+        return (base.endsWith("/") ? base.substring(0, base.length() - 1) : base)
+                + VERIFY_PATH + serialNo;
+    }
+
+    private String verifyUrl(String serialNo) {
+        return VERIFY_PATH + serialNo;
+    }
+}

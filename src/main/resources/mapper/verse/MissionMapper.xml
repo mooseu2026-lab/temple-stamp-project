@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.verse.MissionMapper">
+
+    <!-- [RULE] 관리자 저장은 UPSERT 만. 삭제 후 재삽입 금지 — 조합이 잠깐 비면 SITE-5001 -->
+    <!--        아래 upsert 가 ON DUPLICATE KEY UPDATE 다. 현행 유지이며 DELETE 문을 추가하지 않는다. -->
+
+    <sql id="columns">
+        mission_id, verse_no, tier, scope, site_id, variant_no, body, origin_ref, review_status
+    </sql>
+
+    <!--
+      세 풀의 공통 조건. 축이 셋이라 조건을 한 곳에 모아 둔다 —
+      풀마다 조건을 따로 쓰면 한 곳만 고쳤을 때 어느 풀이 어긋났는지 알기 어렵다.
+        SITE   이 사찰의 과제
+        VERSE  이 구절의 과제
+        COMMON 어디서나 쓰는 과제
+      셋은 서로 겹치지 않는다(chk_mission_scope_ref 가 넣을 때 막는다).
+    -->
+    <sql id="poolPredicate">
+        (   (m.scope = 'SITE'   AND m.site_id  = #{siteId})
+         OR (m.scope = 'VERSE'  AND m.verse_no = #{verseNo})
+         OR (m.scope = 'COMMON')
+        )
+    </sql>
+
+    <!-- 같은 코스에서 이미 본 과제는 뺀다(명세의 제외 규칙 1). -->
+    <sql id="notSeen">
+        NOT EXISTS (SELECT 1
+                    FROM task_seen ts
+                    WHERE ts.user_id = #{userId}
+                      AND ts.course_id = #{courseId}
+                      AND ts.mission_id = m.mission_id)
+    </sql>
+
+    <!--
+      어느 풀에 아직 안 본 과제가 남아 있는지를 한 번에 센다.
+      풀마다 따로 물으면 왕복이 셋이 되고, 그 사이에 다른 요청이 하나를 소진하면
+      "있다고 세어 놓고 못 고르는" 창이 생긴다.
+    -->
+    <select id="countUnseenByScope" resultType="com.templestamp.verse.MissionMapper$ScopeCount">
+        SELECT m.scope AS scope, COUNT(*) AS cnt
+        FROM mission m
+        WHERE m.tier = #{tier}
+          AND <include refid="poolPredicate"/>
+          AND <include refid="notSeen"/>
+        GROUP BY m.scope
+    </select>
+
+    <!-- 고른 풀 안에서 아직 안 본 것 하나. 검수된 것(REVIEWED)을 먼저 준다. -->
+    <select id="findUnseenInScope" resultType="com.templestamp.verse.Mission">
+        SELECT <include refid="columns"/>
+        FROM mission m
+        WHERE m.tier = #{tier}
+          AND m.scope = #{scope}
+          AND <include refid="poolPredicate"/>
+          AND <include refid="notSeen"/>
+        ORDER BY (m.review_status = 'REVIEWED') DESC, RAND()
+        LIMIT 1
+    </select>
+
+    <!--
+      세 풀이 다 비었을 때의 대체안(챕터 5 결정: 미션 없이 도장을 끝낼 수 없다).
+      이 자리에 오면 그 계층의 과제를 다 받아 본 것이므로, 본 것 중에서라도 하나를 준다.
+      부르는 쪽이 WARN 을 한 줄 남긴다 — 조용히 넘어가면 콘텐츠가 바닥난 것을 아무도 모른다.
+    -->
+    <select id="findAnyForFallback" resultType="com.templestamp.verse.Mission">
+        SELECT <include refid="columns"/>
+        FROM mission m
+        WHERE m.tier = #{tier}
+          AND <include refid="poolPredicate"/>
+        ORDER BY (m.review_status = 'REVIEWED') DESC, m.variant_no
+        LIMIT 1
+    </select>
+
+    <select id="findById" resultType="com.templestamp.verse.Mission">
+        SELECT <include refid="columns"/> FROM mission m WHERE m.mission_id = #{missionId}
+    </select>
+
+    <insert id="upsert" parameterType="com.templestamp.verse.Mission"
+            useGeneratedKeys="true" keyProperty="missionId">
+        INSERT INTO mission (verse_no, tier, scope, site_id, variant_no, body, origin_ref, review_status)
+        VALUES (#{verseNo}, #{tier}, #{scope}, #{siteId}, #{variantNo}, #{body}, #{originRef}, #{reviewStatus})
+        ON DUPLICATE KEY UPDATE
+            body          = VALUES(body),
+            origin_ref    = VALUES(origin_ref),
+            review_status = VALUES(review_status)
+    </insert>
+
+    <!-- 채번도 축 단위다. SITE 과제의 변형 번호는 그 사찰 안에서, VERSE 는 그 구절 안에서 센다. -->
+    <select id="nextVariantNo" resultType="int">
+        SELECT COALESCE(MAX(variant_no), 0) + 1
+        FROM mission
+        WHERE tier = #{tier}
+          AND scope = #{scope}
+          AND IFNULL(site_id, 0)  = IFNULL(#{siteId}, 0)
+          AND IFNULL(verse_no, 0) = IFNULL(#{verseNo}, 0)
+    </select>
+
+</mapper>

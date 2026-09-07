@@ -1,0 +1,345 @@
+package com.templestamp.ebook;
+
+import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.parser.PdfTextExtractor;
+import com.templestamp.ebook.dto.EbookResponse;
+import com.templestamp.global.config.EbookProperties;
+import com.templestamp.global.error.BusinessException;
+import com.templestamp.global.error.ErrorCode;
+import com.templestamp.upload.ObjectStorageClient;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * 전자책 생성(챕터 9 §2·§9-2).
+ * <p>
+ * 이 클래스가 지키는 성질은 둘이다 — <b>같은 재료면 같은 책</b>(스냅샷 해시)과
+ * <b>한글이 실제로 찍히는가</b>(폰트 임베드). 두 번째가 특히 조용한 사고다:
+ * 폰트를 안 넣어도 예외가 없고 파일도 잘 만들어지며, 열어 봐야 □ 를 본다.
+ * 그래서 만들어진 PDF 에서 <b>텍스트를 도로 뽑아</b> 한글이 들어 있는지 확인한다(함정 1).
+ */
+@SpringBootTest
+class EbookServiceTest {
+
+    private static final long COURSE_ID = 1L;
+
+    @Autowired EbookService ebookService;
+    @Autowired EbookMapper ebookMapper;
+    @Autowired PdfBuilder pdfBuilder;
+    @Autowired ObjectStorageClient storageClient;
+    @Autowired EbookProperties ebookProperties;
+    @Autowired JdbcTemplate jdbc;
+
+    private long userId;
+    private long pilgrimageId;
+    private final List<String> keysToClean = new ArrayList<>();
+
+    @BeforeEach
+    void setUp() {
+        jdbc.update("INSERT INTO users (email, password, nickname, role, tier, locale) "
+                + "VALUES ('ebook-test@test.com', 'x', '전자책시험', 'USER', 'AGE40', 'ko')");
+        userId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        jdbc.update("INSERT INTO pilgrimage (user_id, course_id, status) VALUES (?, ?, 'IN_PROGRESS')",
+                userId, COURSE_ID);
+        pilgrimageId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    @AfterEach
+    void tearDown() {
+        keysToClean.forEach(k -> {
+            try { storageClient.delete(k); } catch (Exception ignored) { /* 이미 없으면 그만이다 */ }
+        });
+        jdbc.update("DELETE FROM print_order_address WHERE print_order_id IN "
+                + "(SELECT print_order_id FROM print_order WHERE user_id = ?)", userId);
+        jdbc.update("DELETE FROM print_order WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM ebook WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM storage_orphan WHERE file_key LIKE ?", "EBOOK/" + userId + "/%");
+        jdbc.update("DELETE FROM thinkbox WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM stamp WHERE pilgrimage_id = ?", pilgrimageId);
+        jdbc.update("DELETE FROM pilgrimage WHERE pilgrimage_id = ?", pilgrimageId);
+        jdbc.update("DELETE FROM users WHERE user_id = ?", userId);
+    }
+
+    /* ---------------- 재료와 해시 ---------------- */
+
+    @Test
+    @DisplayName("① 기록이 없으면 만들지 않는다 — 400 EBOOK-4001")
+    void noStampsNoBook() {
+        assertThatThrownBy(() -> ebookService.request(userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(ErrorCode.EBOOK_4001);
+    }
+
+    @Test
+    @DisplayName("② 스냅샷 해시는 결정적이다 — 같은 재료를 두 번 세어도 같은 값")
+    void hashIsDeterministic() {
+        stamp(1);
+        String a = ebookService.materialsOf(userId).snapshotHash();
+        String b = ebookService.materialsOf(userId).snapshotHash();
+        assertThat(a).isEqualTo(b).hasSize(64);
+    }
+
+    @Test
+    @DisplayName("③ 재료가 그대로면 같은 책을 준다 — 버튼을 눌러도 쌓이지 않는다")
+    void idempotentRequest() {
+        stamp(1);
+        EbookResponse first = ebookService.request(userId);
+        EbookResponse second = ebookService.request(userId);
+        assertThat(second.ebookId()).isEqualTo(first.ebookId());
+        assertThat(count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("④ 재료가 바뀌면 새 책이다 — 생각상자 한 줄이면 해시가 달라진다")
+    void newMaterialsNewBook() {
+        stamp(1);
+        long first = ebookService.request(userId).ebookId();
+        ebookService.build(first);
+
+        jdbc.update("INSERT INTO thinkbox (user_id, body, source, is_private) "
+                + "VALUES (?, '재료를 바꾸는 한 줄', 'DIRECT', 0)", userId);
+        long second = ebookService.request(userId).ebookId();
+        assertThat(second).isNotEqualTo(first);
+    }
+
+    @Test
+    @DisplayName("⑤ 만드는 중이면 하나만 — 두 번째 요청은 409 EBOOK-4092")
+    void oneRequestedAtATime() {
+        stamp(1);
+        ebookService.request(userId);
+        jdbc.update("INSERT INTO thinkbox (user_id, body, source, is_private) "
+                + "VALUES (?, '다른 재료', 'DIRECT', 0)", userId);
+        assertThatThrownBy(() -> ebookService.request(userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(ErrorCode.EBOOK_4092);
+    }
+
+    @Test
+    @DisplayName("⑥ 하루 상한 — 넘으면 429 EBOOK-4290")
+    void dailyLimit() {
+        stamp(1);
+        for (int i = 0; i < ebookProperties.dailyLimit(); i++) {
+            long id = ebookService.request(userId).ebookId();
+            ebookService.build(id);
+            rememberKey(id);
+            jdbc.update("INSERT INTO thinkbox (user_id, body, source, is_private) "
+                    + "VALUES (?, ?, 'DIRECT', 0)", userId, "재료 " + i);
+        }
+        assertThatThrownBy(() -> ebookService.request(userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(ErrorCode.EBOOK_4290);
+    }
+
+    /* ---------------- 만들기 ---------------- */
+
+    @Test
+    @DisplayName("⑦ 만든 PDF 에서 한글이 도로 뽑힌다 — 폰트를 임베드하지 않으면 □ 로 나간다")
+    void koreanSurvivesInPdf() throws Exception {
+        stamp(1);
+        // 비공개 생각상자를 하나 넣는다 — 개인 소장본이라 <b>비공개도 들어간다</b>(§2-3).
+        // 이것이 없으면 생각상자 장 자체가 빠져 "한글이 찍혔는가" 를 그 장에서 볼 수 없다.
+        jdbc.update("INSERT INTO thinkbox (user_id, body, source, is_private) "
+                + "VALUES (?, '나만 보는 한 줄이지만 내 책에는 들어간다', 'DIRECT', 1)", userId);
+        long id = ebookService.request(userId).ebookId();
+        assertThat(ebookService.build(id)).isTrue();
+        rememberKey(id);
+
+        byte[] pdf = storageClient.getBytes("EBOOK/%d/%d.pdf".formatted(userId, id));
+        assertThat(new String(pdf, 0, 4)).isEqualTo("%PDF");
+
+        PdfReader reader = new PdfReader(pdf);
+        StringBuilder text = new StringBuilder();
+        PdfTextExtractor extractor = new PdfTextExtractor(reader);
+        for (int page = 1; page <= Math.min(reader.getNumberOfPages(), 12); page++) {
+            text.append(extractor.getTextFromPage(page));
+        }
+        reader.close();
+
+        assertThat(text.toString()).as("표지 제목이 한글로 찍혔다").contains("나의 순례 기록");
+        assertThat(text.toString()).as("장 제목도 한글이다").contains("생각상자");
+        assertThat(text.toString()).as("비공개 글도 실린다").contains("나만 보는 한 줄");
+        assertThat(text.toString()).as("판권의 낱말").contains("개인 소장용");
+    }
+
+    @Test
+    @DisplayName("⑧ 쪽 수와 바이트가 행에 적힌다 — 응답이 말한 것과 저장된 것이 같다")
+    void metaIsRecorded() {
+        stamp(1);
+        long id = ebookService.request(userId).ebookId();
+        ebookService.build(id);
+        rememberKey(id);
+
+        Ebook row = ebookMapper.findById(id).orElseThrow();
+        assertThat(row.getStatus()).isEqualTo(Ebook.READY);
+        assertThat(row.getPageCount()).isGreaterThanOrEqualTo(7);
+        assertThat(row.getByteSize()).isGreaterThan(0L);
+        assertThat(row.getPdfKey()).isEqualTo("EBOOK/%d/%d.pdf".formatted(userId, id));
+    }
+
+    @Test
+    @DisplayName("⑨ 사진이 저장소에 없어도 실패가 아니다 — 빈 자리로 두고 넘어간다")
+    void missingPhotoIsNotFailure() {
+        long stampId = stamp(1);
+        jdbc.update("UPDATE stamp SET photo_key = ? WHERE stamp_id = ?",
+                "PHOTO/" + userId + "/없는파일.jpg", stampId);
+
+        long id = ebookService.request(userId).ebookId();
+        assertThat(ebookService.build(id)).as("한 장이 없다고 책 한 권이 실패하면 안 된다").isTrue();
+        rememberKey(id);
+    }
+
+    @Test
+    @DisplayName("⑩ 사진은 긴 변이 설정값으로 줄어든다 — 원본 그대로면 60장에 수백 MB 다")
+    void photoIsShrunk() throws Exception {
+        long stampId = stamp(1);
+        String key = "PHOTO/%d/big.jpg".formatted(userId);
+        storageClient.put(key, jpeg(3000, 2000), "image/jpeg");
+        keysToClean.add(key);
+        jdbc.update("UPDATE stamp SET photo_key = ? WHERE stamp_id = ?", key, stampId);
+
+        long id = ebookService.request(userId).ebookId();
+        assertThat(ebookService.build(id)).isTrue();
+        rememberKey(id);
+
+        // 원본 3000px 짜리 한 장이 그대로 들어갔다면 책이 이보다 훨씬 커진다.
+        long size = ebookMapper.findById(id).orElseThrow().getByteSize();
+        assertThat(size).as("줄여 넣었다").isLessThan(3_000_000L);
+    }
+
+    @Test
+    @DisplayName("⑪ 상한을 넘기면 가장 오래된 책이 지워지고 파일 키는 큐로 간다")
+    void trimOldest() {
+        stamp(1);
+        List<Long> made = new ArrayList<>();
+        for (int i = 0; i <= ebookProperties.maxReady(); i++) {
+            long id = ebookService.request(userId).ebookId();
+            ebookService.build(id);
+            made.add(id);
+            rememberKey(id);
+            jdbc.update("INSERT INTO thinkbox (user_id, body, source, is_private) "
+                    + "VALUES (?, ?, 'DIRECT', 0)", userId, "권수 늘리기 " + i);
+            // 하루 상한에 걸리지 않게 만든 날짜를 어제로 민다 — 여기서 보는 것은 권수 상한이다.
+            jdbc.update("UPDATE ebook SET built_at = built_at - INTERVAL 1 DAY WHERE ebook_id = ?", id);
+        }
+        Integer ready = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ebook WHERE user_id = ? AND status = 'READY'", Integer.class, userId);
+        assertThat(ready).isEqualTo(ebookProperties.maxReady());
+        assertThat(ebookMapper.findById(made.get(0))).as("가장 오래된 것이 사라졌다").isEmpty();
+
+        Integer queued = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM storage_orphan WHERE file_key = ?", Integer.class,
+                "EBOOK/%d/%d.pdf".formatted(userId, made.get(0)));
+        assertThat(queued).as("파일은 바로 지우지 않고 큐에 적는다").isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("⑫ 인쇄 주문이 걸린 책은 상한 정리에서 빠진다 — 찍는 중인 책을 지우면 되돌릴 수 없다")
+    void bookWithOrderSurvivesTrim() {
+        stamp(1);
+        long protectedId = ebookService.request(userId).ebookId();
+        ebookService.build(protectedId);
+        rememberKey(protectedId);
+        jdbc.update("INSERT INTO print_order (user_id, ebook_id, quantity, status) "
+                + "VALUES (?, ?, 1, 'CONFIRMED')", userId, protectedId);
+        jdbc.update("UPDATE ebook SET built_at = built_at - INTERVAL 1 DAY WHERE ebook_id = ?", protectedId);
+
+        for (int i = 0; i <= ebookProperties.maxReady(); i++) {
+            jdbc.update("INSERT INTO thinkbox (user_id, body, source, is_private) "
+                    + "VALUES (?, ?, 'DIRECT', 0)", userId, "밀어내기 " + i);
+            long id = ebookService.request(userId).ebookId();
+            ebookService.build(id);
+            rememberKey(id);
+            jdbc.update("UPDATE ebook SET built_at = built_at - INTERVAL 1 DAY WHERE ebook_id = ?", id);
+        }
+        assertThat(ebookMapper.findById(protectedId)).as("주문이 걸린 책은 살아남는다").isPresent();
+    }
+
+    @Test
+    @DisplayName("⑬ 두 스레드가 같은 행을 집어도 한 번만 만들어진다 — 있는 행을 잠근다")
+    void concurrentBuildRunsOnce() throws Exception {
+        stamp(1);
+        long id = ebookService.request(userId).ebookId();
+        rememberKey(id);
+
+        int threads = 2;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicInteger built = new AtomicInteger();
+        List<String> errors = new ArrayList<>();
+
+        for (int i = 0; i < threads; i++) {
+            pool.submit(() -> {
+                try {
+                    start.await();
+                    if (ebookService.build(id)) {
+                        built.incrementAndGet();
+                    }
+                } catch (Exception e) {
+                    synchronized (errors) { errors.add(e.getClass().getSimpleName()); }
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        assertThat(done.await(60, TimeUnit.SECONDS)).isTrue();
+        pool.shutdownNow();
+
+        assertThat(errors).as("교착이나 예외 없이 끝난다").isEmpty();
+        assertThat(built.get()).as("실제로 만든 것은 하나뿐").isEqualTo(1);
+    }
+
+    /* ---------------- 도구 ---------------- */
+
+    private long stamp(int position) {
+        Long courseSiteId = jdbc.queryForObject(
+                "SELECT course_site_id FROM course_site WHERE course_id = ? AND position = ?",
+                Long.class, COURSE_ID, position);
+        Long siteId = jdbc.queryForObject(
+                "SELECT site_id FROM course_site WHERE course_site_id = ?", Long.class, courseSiteId);
+        jdbc.update("INSERT INTO stamp (pilgrimage_id, course_site_id, site_id, verify_status, "
+                        + "verify_method, mission_verified_at, user_sentence) "
+                        + "VALUES (?, ?, ?, 'COMPLETED', 'GPS_QR', NOW(), ?)",
+                pilgrimageId, courseSiteId, siteId, "자리 " + position + "에서 남긴 한 줄");
+        return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    private void rememberKey(long ebookId) {
+        keysToClean.add("EBOOK/%d/%d.pdf".formatted(userId, ebookId));
+    }
+
+    private int count() {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM ebook WHERE user_id = ?", Integer.class, userId);
+    }
+
+    private byte[] jpeg(int w, int h) throws Exception {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        g.setColor(java.awt.Color.LIGHT_GRAY);
+        g.fillRect(0, 0, w, h);
+        g.dispose();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(img, "jpg", out);
+        return out.toByteArray();
+    }
+}

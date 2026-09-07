@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.manuscript.ManuscriptMapper">
+
+    <sql id="columns">
+        manuscript_id, site_id, site_key, verse_no, kind, variant_no, status,
+        title, body, author_id, reviewer_id, reviewed_at, reject_reason, retired_at,
+        created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.templestamp.manuscript.Manuscript"
+            useGeneratedKeys="true" keyProperty="manuscriptId">
+        INSERT INTO manuscript (site_id, verse_no, kind, variant_no, status, title, body, author_id)
+        VALUES (#{siteId}, #{verseNo}, #{kind}, #{variantNo}, #{status}, #{title}, #{body}, #{authorId})
+    </insert>
+
+    <select id="findById" resultType="com.templestamp.manuscript.Manuscript">
+        SELECT <include refid="columns"/> FROM manuscript WHERE manuscript_id = #{manuscriptId}
+    </select>
+
+    <!--
+      번호를 매기기 전에 그 키의 범위를 잠근다. 행이 없어도 gap 이 잠기므로 동시 등록이 한 줄로 선다.
+      값을 쓰려고 읽는 것이 아니라 순서를 세우려고 읽는다 — 그래서 결과는 버려도 된다.
+    -->
+    <!--
+      변형 번호를 매기기 전에 이 자리를 잠근다.
+      <b>없는 행의 범위를 잠그지 않는 것이 요점이다.</b> 처음 이 자리에 아무 행도 없을 때
+      MAX(variant_no) ... FOR UPDATE 로 잠그면 InnoDB 는 갭 잠금을 준다. 그런데 갭 잠금끼리는
+      서로 <b>양립한다</b> — 여섯 스레드가 모두 잠금을 얻고 모두 INSERT 로 넘어가, 서로의 갭을
+      깨야 하는 삽입 의도 잠금이 원형으로 물려 교착이 난다(실측: 6스레드 전부 Deadlock).
+      그래서 반드시 있는 행 하나를 잠근다 —
+        · 사찰 원고 → 그 사찰 행(site). 그 사찰의 등록은 전부 이 한 줄에서 줄을 선다.
+        · 기본 원고 → 그 구·종류의 기본 원고 행. 시더가 열 편을 보장한다(H15).
+      한 트랜잭션이 이 잠금 하나만 잡으므로 원형 대기 자체가 생기지 않는다.
+    -->
+    <select id="lockKeyOwner" resultType="long">
+        <choose>
+            <when test="siteId != null">
+                SELECT site_id FROM site WHERE site_id = #{siteId} FOR UPDATE
+            </when>
+            <otherwise>
+                SELECT manuscript_id FROM manuscript
+                WHERE site_key = 0 AND verse_no = #{verseNo} AND kind = #{kind}
+                ORDER BY manuscript_id LIMIT 1 FOR UPDATE
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="countActive" resultType="int">
+        SELECT COUNT(*)
+        FROM manuscript
+        WHERE site_key = #{siteKey} AND verse_no = #{verseNo} AND kind = #{kind}
+          AND status &lt;&gt; 'RETIRED'
+    </select>
+
+    <!-- 퇴역한 것까지 센다. 번호를 재사용하면 옛 도장이 가리키던 번호와 새 원고의 번호가 겹친다. -->
+    <select id="maxVariantNo" resultType="int">
+        SELECT COALESCE(MAX(variant_no), 0)
+        FROM manuscript
+        WHERE site_key = #{siteKey} AND verse_no = #{verseNo} AND kind = #{kind}
+    </select>
+
+    <select id="countSameBody" resultType="int">
+        SELECT COUNT(*)
+        FROM manuscript
+        WHERE site_key = #{siteKey} AND verse_no = #{verseNo} AND kind = #{kind}
+          AND body = #{body}
+    </select>
+
+    <!--
+      수정은 DRAFT·REJECTED 에서만 온다(서비스가 먼저 본다). 반려본을 고치면 DRAFT 로 돌아가고
+      reject_reason 은 지우지 않는다 — 왜 반려됐는지가 이력으로 남아야 한다.
+    -->
+    <update id="updateContent">
+        UPDATE manuscript
+        SET title  = #{title},
+            body   = #{body},
+            status = 'DRAFT'
+        WHERE manuscript_id = #{manuscriptId}
+          AND status IN ('DRAFT', 'REJECTED')
+    </update>
+
+    <update id="markSubmitted">
+        UPDATE manuscript
+        SET status = 'SUBMITTED'
+        WHERE manuscript_id = #{manuscriptId}
+          AND status = 'DRAFT'
+    </update>
+
+    <update id="markApproved">
+        UPDATE manuscript
+        SET status       = 'APPROVED',
+            reviewer_id  = #{reviewerId},
+            reviewed_at  = NOW()
+        WHERE manuscript_id = #{manuscriptId}
+          AND status = 'SUBMITTED'
+    </update>
+
+    <update id="markRejected">
+        UPDATE manuscript
+        SET status        = 'REJECTED',
+            reviewer_id   = #{reviewerId},
+            reviewed_at   = NOW(),
+            reject_reason = #{reason}
+        WHERE manuscript_id = #{manuscriptId}
+          AND status = 'SUBMITTED'
+    </update>
+
+    <update id="markRetired">
+        UPDATE manuscript
+        SET status     = 'RETIRED',
+            retired_at = NOW()
+        WHERE manuscript_id = #{manuscriptId}
+          AND status = 'APPROVED'
+    </update>
+
+    <!-- 기본 원고는 구·종류마다 한 편이다. 새것이 승인되면 옛것이 물러난다. -->
+    <update id="retirePreviousDefault">
+        UPDATE manuscript
+        SET status     = 'RETIRED',
+            retired_at = NOW()
+        WHERE site_id IS NULL
+          AND verse_no = #{verseNo}
+          AND kind = #{kind}
+          AND status = 'APPROVED'
+          AND manuscript_id &lt;&gt; #{exceptId}
+    </update>
+
+    <select id="findApproved" resultType="com.templestamp.manuscript.Manuscript">
+        SELECT <include refid="columns"/>
+        FROM manuscript
+        WHERE site_key = #{siteKey} AND verse_no = #{verseNo} AND kind = #{kind}
+          AND status = 'APPROVED'
+        ORDER BY variant_no
+    </select>
+
+    <sql id="rowFilter">
+        <where>
+            <if test="authorId != null">AND m.author_id = #{authorId}</if>
+            <if test="siteId != null">AND m.site_id = #{siteId}</if>
+            <if test="verseNo != null">AND m.verse_no = #{verseNo}</if>
+            <if test="kind != null">AND m.kind = #{kind}</if>
+            <if test="status != null">AND m.status = #{status}</if>
+        </where>
+    </sql>
+
+    <!-- 심사 목록은 오래 기다린 것이 먼저다. 편집자 목록도 같은 순서를 쓴다. -->
+    <select id="findRows" resultType="com.templestamp.manuscript.dto.ManuscriptRow">
+        SELECT m.manuscript_id,
+               m.site_id,
+               s.name AS site_name,
+               m.verse_no,
+               m.kind,
+               m.variant_no,
+               m.status,
+               m.title,
+               m.body,
+               m.author_id,
+               au.nickname AS author_nickname,
+               m.reviewer_id,
+               m.reviewed_at,
+               m.reject_reason,
+               m.retired_at,
+               m.created_at
+        FROM manuscript m
+                 JOIN users au ON au.user_id = m.author_id
+                 LEFT JOIN site s ON s.site_id = m.site_id
+        <include refid="rowFilter"/>
+        ORDER BY m.created_at, m.manuscript_id
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countRows" resultType="long">
+        SELECT COUNT(*) FROM manuscript m
+        <include refid="rowFilter"/>
+    </select>
+
+</mapper>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.course.CourseMapper">
+
+    <sql id="rowSelect">
+        SELECT c.course_id,
+               c.region_id,
+               r.name AS region_name,
+               c.name,
+               c.description,
+               c.status,
+               c.sort_no,
+               (SELECT COUNT(*) FROM course_site cs WHERE cs.course_id = c.course_id) AS site_count
+        FROM course c
+                 JOIN region r ON r.region_id = c.region_id
+    </sql>
+
+    <select id="findActive" resultType="com.templestamp.course.dto.CourseRow">
+        <include refid="rowSelect"/>
+        WHERE c.status = 'ACTIVE'
+        <if test="regionId != null">
+            AND c.region_id = #{regionId}
+        </if>
+        ORDER BY r.sort_no, c.sort_no, c.course_id
+    </select>
+
+    <select id="findRowById" resultType="com.templestamp.course.dto.CourseRow">
+        <include refid="rowSelect"/>
+        WHERE c.course_id = #{courseId}
+    </select>
+
+    <select id="findActiveRowById" resultType="com.templestamp.course.dto.CourseRow">
+        <include refid="rowSelect"/>
+        WHERE c.course_id = #{courseId} AND c.status = 'ACTIVE'
+    </select>
+
+    <select id="findById" resultType="com.templestamp.course.Course">
+        SELECT course_id, region_id, name, description, status, sort_no, created_at, updated_at
+        FROM course
+        WHERE course_id = #{courseId}
+    </select>
+
+    <insert id="save" parameterType="com.templestamp.course.Course"
+            useGeneratedKeys="true" keyProperty="courseId">
+        INSERT INTO course (region_id, name, description, status, sort_no)
+        VALUES (#{regionId}, #{name}, #{description}, #{status}, #{sortNo})
+    </insert>
+
+    <update id="update" parameterType="com.templestamp.course.Course">
+        UPDATE course
+        SET region_id   = #{regionId},
+            name        = #{name},
+            description = #{description},
+            status      = #{status},
+            sort_no     = #{sortNo}
+        WHERE course_id = #{courseId}
+    </update>
+
+    <select id="countActive" resultType="int">
+        SELECT COUNT(*) FROM course WHERE status = 'ACTIVE'
+    </select>
+
+
+    <update id="updateStatus">
+        UPDATE course SET status = #{status} WHERE course_id = #{courseId}
+    </update>
+
+    <select id="countInProgressPilgrimages" resultType="int">
+        SELECT COUNT(*) FROM pilgrimage
+        WHERE course_id = #{courseId} AND status = 'IN_PROGRESS'
+    </select>
+
+
+    <select id="existsActive" resultType="boolean">
+        SELECT COUNT(*) > 0 FROM course WHERE course_id = #{courseId} AND status = 'ACTIVE'
+    </select>
+
+
+    <select id="findIdByRegionAndName" resultType="long">
+        SELECT course_id FROM course WHERE region_id = #{regionId} AND name = #{name}
+    </select>
+
+</mapper>

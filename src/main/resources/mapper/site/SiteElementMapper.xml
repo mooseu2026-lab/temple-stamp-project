@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.site.SiteElementMapper">
+
+  <select id="findDictionary" resultType="map">
+    SELECT element_id AS elementId, code, sort_no AS sortNo, name FROM shrine_element ORDER BY sort_no
+  </select>
+
+  <insert id="upsert">
+    INSERT INTO site_element (site_id, element_id, local_name, note)
+    VALUES (#{siteId}, #{elementId}, #{localName}, #{note})
+    ON DUPLICATE KEY UPDATE local_name = VALUES(local_name), note = VALUES(note)
+    <!-- uk_site_element(site_id, element_id). 부속전각·탑 다행은 아직 미채택 — 여러 이름은 local_name 에 '·' 로 -->
+  </insert>
+
+  <delete id="delete">
+    DELETE FROM site_element WHERE site_id = #{siteId} AND element_id = #{elementId}
+  </delete>
+
+</mapper>

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.ebook.EbookMapper">
+
+    <sql id="columns">
+        ebook_id, user_id, pilgrimage_id, ebook_type, status, pdf_key, epub_key,
+        fail_reason, retry_count, building_started_at, queued_at, built_at,
+        created_at, updated_at
+    </sql>
+
+    <!--
+      (순례, 종류) 에 UNIQUE 가 걸려 있어 완주 처리가 재시도돼도 대기열에 두 번 쌓이지 않는다.
+      회향본·중간본은 pilgrimage_id 가 NULL 이라 이 제약이 걸리지 않으므로 서비스가 따로 확인한다.
+    -->
+    <insert id="enqueue" parameterType="com.templestamp.ebook.Ebook"
+            useGeneratedKeys="true" keyProperty="ebookId">
+        INSERT IGNORE INTO ebook (user_id, pilgrimage_id, ebook_type, status, queued_at)
+        VALUES (#{userId}, #{pilgrimageId}, #{ebookType}, 'QUEUED', NOW())
+    </insert>
+
+    <select id="findById" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/> FROM ebook WHERE ebook_id = #{ebookId}
+    </select>
+
+    <!-- 중간본·회향본 중복 방지. FAILED 는 "없는 것" 으로 봐서 다시 큐에 넣을 수 있게 둔다. -->
+    <select id="findAliveByUserAndType" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/>
+        FROM ebook
+        WHERE user_id = #{userId}
+          AND ebook_type = #{ebookType}
+          AND pilgrimage_id IS NULL
+          AND status IN ('QUEUED', 'BUILDING', 'READY')
+        LIMIT 1
+    </select>
+
+    <select id="findByPilgrimageAndType" resultType="com.templestamp.ebook.Ebook">
+        SELECT <include refid="columns"/>
+        FROM ebook
+        WHERE pilgrimage_id = #{pilgrimageId} AND ebook_type = #{ebookType}
+    </select>
+
+    <!-- 회향본·중간본은 코스가 없어 course_name 이 null 이다. LEFT JOIN 으로 받는다. -->
+    <select id="findRowsByUserId" resultType="com.templestamp.ebook.dto.EbookRow">
+        SELECT e.ebook_id,
+               e.user_id,
+               e.pilgrimage_id,
+               c.course_id,
+               c.name AS course_name,
+               e.ebook_type,
+               e.status,
+               e.pdf_key,
+               e.epub_key,
+               e.created_at
+        FROM ebook e
+                 LEFT JOIN pilgrimage p ON p.pilgrimage_id = e.pilgrimage_id
+                 LEFT JOIN course c ON c.course_id = p.course_id
+        WHERE e.user_id = #{userId}
+        ORDER BY e.created_at DESC
+    </select>
+
+    <!-- 키가 하나라도 들어오면 READY 로 옮긴다. 조판 워커가 마지막에 호출하는 문장이다. -->
+    <update id="updateFiles">
+        UPDATE ebook
+        SET pdf_key    = COALESCE(#{pdfKey}, pdf_key),
+            epub_key   = COALESCE(#{epubKey}, epub_key),
+            status     = 'READY',
+            built_at   = NOW(),
+            fail_reason = NULL
+        WHERE ebook_id = #{ebookId}
+    </update>
+
+</mapper>

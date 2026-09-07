@@ -1,0 +1,268 @@
+package com.templestamp.auth;
+
+import com.templestamp.auth.dto.LoginRequest;
+import com.templestamp.auth.dto.LoginResponse;
+import com.templestamp.auth.dto.SignupRequest;
+import com.templestamp.global.config.AppProperties;
+import com.templestamp.global.error.BusinessException;
+import com.templestamp.global.error.ErrorCode;
+import com.templestamp.global.security.JwtProvider;
+import com.templestamp.user.User;
+import com.templestamp.user.UserMapper;
+import com.templestamp.user.dto.UserResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.HexFormat;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class AuthService {
+
+    /** 5회 실패 시 15분 잠금 (확정). */
+    private static final int MAX_LOGIN_FAIL = 5;
+    private static final int LOCK_MINUTES = 15;
+
+    private final UserMapper userMapper;
+    private final RefreshTokenMapper refreshTokenMapper;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtProvider jwtProvider;
+    private final AppProperties appProperties;
+
+    /** 리프레시 토큰용 난수원. 스레드 안전하고 한 번 만들어 재사용한다. */
+    private final SecureRandom random = new SecureRandom();
+
+    /**
+     * 로그인·재발급 결과. 리프레시 원문은 응답 본문이 아니라 쿠키로 나가야 해서
+     * 컨트롤러까지만 따로 들고 간다.
+     */
+    public record IssuedTokens(LoginResponse body, String refreshToken, int refreshDays) {
+    }
+
+    /* ---------------- 회원가입 ---------------- */
+
+    @Transactional
+    public UserResponse signup(SignupRequest request) {
+        String email = request.email().trim().toLowerCase();
+        if (userMapper.existsByEmail(email) == 1) {
+            throw new BusinessException(ErrorCode.AUTH_4090);
+        }
+
+        User user = new User();
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode(request.password()));
+        user.setNickname(request.nickname().trim());
+        user.setRole(User.ROLE_USER);
+        // tier·locale·notificationEnabled 는 null 로 둔다 — 매퍼가 컬럼을 빼서 DB DEFAULT 가 들어간다.
+
+        userMapper.save(user);
+        return UserResponse.from(userMapper.findById(user.getUserId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_4040)));
+    }
+
+    /* ---------------- 로그인 ---------------- */
+
+    /**
+     * noRollbackFor 가 없으면 계정 잠금이 통째로 무력화된다.
+     * BusinessException 은 RuntimeException 이라 기본 규칙상 롤백 대상이고, 비밀번호 불일치 때
+     * recordLoginFail 로 올린 카운트가 바로 뒤 throw 에 휩쓸려 사라진다. login_fail_count 가
+     * 영원히 0 이라 5회 잠금이 절대 걸리지 않는다.
+     * <p>
+     * 던져지는 자리는 세 곳뿐이고 셋 다 커밋돼도 안전하다 — 사용자 없음·계정 잠김은 조회만 하고,
+     * 비밀번호 불일치는 그 UPDATE 가 커밋돼야 정상이다. DB 장애 같은 다른 예외는 그대로 롤백된다.
+     */
+    @Transactional(noRollbackFor = BusinessException.class)
+    public IssuedTokens login(LoginRequest request) {
+        String email = request.email().trim().toLowerCase();
+
+        // 존재하지 않는 이메일과 비밀번호 오류를 같은 코드로 응답한다. 가입 여부가 새어 나가지 않게.
+        User user = userMapper.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUTH_4011));
+
+        if (user.isLockedNow()) {
+            throw new BusinessException(ErrorCode.AUTH_4031,
+                    "로그인 시도 초과로 잠겼습니다. " + LOCK_MINUTES + "분 후 다시 시도해 주세요.");
+        }
+
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            userMapper.recordLoginFail(user.getUserId(), MAX_LOGIN_FAIL, LOCK_MINUTES);
+
+            // 방금 이 실패로 잠겼는지 한 번 더 본다. 위의 isLockedNow 검사는 이 요청이 들어온 시점의
+            // 값이라 5회째에는 아직 4다 — 그 검사만 믿으면 "잠겼다"는 응답이 6회째부터 나가고,
+            // 사용자는 한 번 더 눌러야 잠금 화면을 본다. 잠긴 시점(5회)과 알려주는 시점을 맞춘다.
+            boolean lockedNow = userMapper.findById(user.getUserId())
+                    .map(User::isLockedNow)
+                    .orElse(false);
+            if (lockedNow) {
+                throw new BusinessException(ErrorCode.AUTH_4031,
+                        "로그인 시도 초과로 잠겼습니다. " + LOCK_MINUTES + "분 후 다시 시도해 주세요.");
+            }
+            throw new BusinessException(ErrorCode.AUTH_4011);
+        }
+
+        userMapper.resetLoginFail(user.getUserId());
+        return issue(user);
+    }
+
+    /**
+     * 되돌릴 수 없는 일(탈퇴) 앞의 비밀번호 재확인. <b>로그인과 같은 코드·같은 잠금 규칙</b>을 탄다.
+     * <p>
+     * 규칙을 여기서 새로 쓰지 않고 login 과 같은 매퍼 호출을 쓰는 이유는, 두 곳이 갈라지면
+     * "로그인은 5회에 잠기는데 탈퇴 확인은 안 잠기는" 문이 생기기 때문이다.
+     * <p>
+     * {@code noRollbackFor} 가 여기에도 필요하다 — 없으면 실패 횟수를 올린 UPDATE 가
+     * 바로 뒤의 예외에 휩쓸려 사라진다(정리.md §6-2).
+     */
+    @Transactional(noRollbackFor = BusinessException.class)
+    public void reauthenticate(Long userId, String rawPassword) {
+        User user = userMapper.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_4040));
+
+        if (user.isLockedNow()) {
+            throw new BusinessException(ErrorCode.AUTH_4031,
+                    "로그인 시도 초과로 잠겼습니다. " + LOCK_MINUTES + "분 후 다시 시도해 주세요.");
+        }
+        if (passwordEncoder.matches(rawPassword, user.getPassword())) {
+            return;
+        }
+
+        userMapper.recordLoginFail(user.getUserId(), MAX_LOGIN_FAIL, LOCK_MINUTES);
+        boolean lockedNow = userMapper.findById(user.getUserId())
+                .map(User::isLockedNow)
+                .orElse(false);
+        if (lockedNow) {
+            throw new BusinessException(ErrorCode.AUTH_4031,
+                    "로그인 시도 초과로 잠겼습니다. " + LOCK_MINUTES + "분 후 다시 시도해 주세요.");
+        }
+        throw new BusinessException(ErrorCode.AUTH_4011);
+    }
+
+    /* ---------------- 재발급 ---------------- */
+
+    /**
+     * 리프레시 토큰 회전(rotation). 쓰인 토큰은 즉시 폐기하고 새 쌍을 내준다.
+     * 이미 폐기된 토큰이 다시 들어오면 탈취로 보고 그 사용자의 세션을 전부 끊는다.
+     * <p>
+     * login 과 같은 이유로 noRollbackFor 가 필요하다. 재사용을 감지해 revokeAllByUser 로 전 기기를
+     * 끊은 직후 AUTH-4015 를 던지는데, 롤백되면 401 만 나가고 도둑이 쥔 토큰은 그대로 살아 있다 —
+     * 탐지는 되는데 차단이 안 되는 상태가 된다.
+     */
+    @Transactional(noRollbackFor = BusinessException.class)
+    public IssuedTokens refresh(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BusinessException(ErrorCode.AUTH_4014);
+        }
+
+        String hash = hashToken(refreshToken);
+        RefreshToken stored = refreshTokenMapper.findByTokenHash(hash)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUTH_4014));
+
+        if (stored.isRevoked()) {
+            log.warn("폐기된 리프레시 토큰 재사용 감지. userId={}", stored.getUserId());
+            refreshTokenMapper.revokeAllByUser(stored.getUserId());
+            throw new BusinessException(ErrorCode.AUTH_4015);
+        }
+        if (stored.isExpired()) {
+            throw new BusinessException(ErrorCode.AUTH_4012);
+        }
+
+        refreshTokenMapper.revoke(hash);
+
+        User user = userMapper.findById(stored.getUserId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_4040));
+        return issue(user);
+    }
+
+    /* ---------------- 로그아웃 ---------------- */
+
+    @Transactional
+    public void logout(Long userId, String refreshToken) {
+        if (userId != null) {
+            refreshTokenMapper.revokeAllByUser(userId);
+            return;
+        }
+        // 액세스 토큰이 만료돼 비로그인으로 들어온 경우. 그때가 로그아웃을 누르는 흔한 상황이라
+        // 막지 않고, 쿠키로 들고 온 토큰 한 건만 폐기한다.
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            refreshTokenMapper.revoke(hashToken(refreshToken));
+        }
+    }
+
+    /* ---------------- 정리 ---------------- */
+
+    /**
+     * 만료된 리프레시 토큰 삭제. 폐기 표시만 된 행도 만료 시각이 지나면 함께 지운다.
+     * 하루 한 번이면 충분하다 — 이 테이블은 사용자 수만큼만 자란다.
+     */
+    @Scheduled(fixedDelayString = "P1D", initialDelayString = "PT5M")
+    @Transactional
+    public void cleanUpExpiredTokens() {
+        int deleted = refreshTokenMapper.deleteExpired();
+        if (deleted > 0) {
+            log.info("만료된 리프레시 토큰 {}건 삭제", deleted);
+        }
+    }
+
+    /* ---------------- 공통 발급 ---------------- */
+
+    /**
+     * 액세스 토큰에는 userId·email·role 만 넣는다. tier 는 넣지 않는다 —
+     * 사용자가 계층을 바꿔도 토큰이 만료될 때까지 옛 계층 문구가 나오게 되기 때문이다.
+     */
+    private IssuedTokens issue(User user) {
+        String accessToken = jwtProvider.createAccessToken(
+                user.getUserId(), user.getEmail(), user.getRole());
+
+        String refreshToken = createRefreshToken();
+        int refreshDays = appProperties.jwt().refreshDays();
+
+        RefreshToken row = new RefreshToken();
+        row.setUserId(user.getUserId());
+        row.setTokenHash(hashToken(refreshToken));
+        row.setExpiresAt(LocalDateTime.now().plusDays(refreshDays));
+        refreshTokenMapper.save(row);
+
+        LoginResponse body = LoginResponse.of(
+                accessToken, jwtProvider.getAccessExpiresInSeconds(), UserResponse.from(user));
+
+        return new IssuedTokens(body, refreshToken, refreshDays);
+    }
+
+    /* ---------------- 리프레시 토큰 ---------------- */
+
+    /**
+     * 리프레시 토큰은 JWT 가 아니라 256비트 난수다.
+     * JWT 로 만들면 서명만 맞으면 유효해져서 서버가 즉시 폐기할 수 없다. 회전·재사용 감지를
+     * 하려면 DB 가 진실의 출처여야 하고, 그러려면 그냥 난수면 충분하다.
+     */
+    private String createRefreshToken() {
+        byte[] bytes = new byte[32];
+        random.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    /**
+     * DB 에 넣을 해시. 원문은 어디에도 저장하지 않는다 — DB 가 통째로 새도 세션을 탈취당하지 않게.
+     * refresh_token.token_hash 가 CHAR(64) 라 16진 표기를 쓴다(SHA-256 = 32바이트 = 64자).
+     */
+    private String hashToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 을 사용할 수 없습니다.", e);
+        }
+    }
+}

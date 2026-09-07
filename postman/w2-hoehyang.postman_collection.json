@@ -1,0 +1,1413 @@
+{
+ "info": {
+  "name": "temple-stamp — 챕터 7 회향·실물 보상 (준비 SQL 뒤)",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ },
+ "item": [
+  {
+   "name": "W2-00 로그인",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "pm.environment.set('wToken', pm.response.json().data.accessToken);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/auth/login",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "auth",
+      "login"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"email\":\"w-user@test.com\",\"password\":\"Test1234!\"}"
+    }
+   }
+  },
+  {
+   "name": "W2-00b 관리자 로그인",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "pm.environment.set('adminToken', pm.response.json().data.accessToken);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/auth/login",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "auth",
+      "login"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"email\":\"{{adminEmail}}\",\"password\":\"{{adminPassword}}\"}"
+    }
+   }
+  },
+  {
+   "name": "W2-00c 다른 사용자 로그인",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "pm.environment.set('wOtherToken', pm.response.json().data.accessToken);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/auth/login",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "auth",
+      "login"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"email\":\"w-other@test.com\",\"password\":\"Test1234!\"}"
+    }
+   }
+  },
+  {
+   "name": "W2-00d 코스 1 자리",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const s = pm.response.json().data.sites;",
+       "for (let i = 0; i < 5; i++) pm.environment.set('wcs' + (i + 1), s[i].courseSiteId);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [],
+    "url": {
+     "raw": "{{baseUrl}}/api/courses/1",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "courses",
+      "1"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W2-00e 마지막 자리의 도장 (by-slot)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "pm.environment.set('wStamp5', pm.response.json().data.stampId);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/stamps/by-slot/{{wcs5}}",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "stamps",
+      "by-slot",
+      "{{wcs5}}"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W2-00f 지금 유효한 코스 인증서 번호",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const v = pm.response.json().data.items.filter(x => x.status === 'VALID' && x.certType === 'PILGRIMAGE');",
+       "pm.test('유효한 코스 인증서 1장', () => pm.expect(v).to.have.lengthOf(1));",
+       "pm.environment.set('wCertOld', v[0].serialNo);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/certificates",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "certificates"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W16 관리자가 도장 하나를 회수(반려)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/stamps/{{wStamp5}}/review",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "stamps",
+      "{{wStamp5}}",
+      "review"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"decision\":\"REJECT\",\"reason\":\"현장 확인 결과 인증이 성립하지 않습니다.\"}"
+    }
+   }
+  },
+  {
+   "name": "W17 완주가 취소된다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const p = pm.response.json().data.progress;",
+       "pm.test('완료 4칸', () => pm.expect(p.completedCount).to.eql(4));",
+       "pm.test('진행 중으로 되돌아간다', () => pm.expect(p.status).to.eql('IN_PROGRESS'));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/courses/1",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "courses",
+      "1"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W17b 인증서는 지워지지 않고 REVOKED 로 남는다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "const old = it.find(x => x.serialNo === pm.environment.get('wCertOld'));",
+       "console.log('[W17b] ' + it.map(x => x.certType + ':' + x.serialNo + ':' + x.status).join(', '));",
+       "pm.test('옛 번호가 목록에 남아 있다', () => pm.expect(old).to.not.be.undefined);",
+       "pm.test('REVOKED', () => pm.expect(old.status).to.eql('REVOKED'));",
+       "pm.test('회수 시각이 있다', () => pm.expect(old.revokedAt).to.not.be.null);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/certificates",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "certificates"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W17c 아직 아무도 움직이지 않은 보상만 회수된다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "console.log('[W17c] ' + it.map(r => r.rewardType + ':' + r.status).join(', '));",
+       "pm.test('코스 완주 보상이 회수됐다', () => pm.expect(it.some(r => r.status === 'REVOKED')).to.be.true);",
+       "pm.test('회수된 것은 claimable 이 아니다', () => pm.expect(it.filter(r => r.status === 'REVOKED').every(r => r.claimable === false)).to.be.true);",
+       "pm.environment.set('wRewardCount', it.length);",
+       "const revoked = it.find(r => r.status === 'REVOKED');",
+       "pm.environment.set('wRevokedReward', revoked ? revoked.userRewardId : 0);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W18 회수된 번호도 진위 확인은 200 — \"있었고 지금은 무효\"",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const d = pm.response.json().data;",
+       "pm.test('REVOKED', () => pm.expect(d.status).to.eql('REVOKED'));",
+       "pm.test('회수 시각이 실린다', () => pm.expect(d.revokedAt).to.not.be.null);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [],
+    "url": {
+     "raw": "{{baseUrl}}/api/certificates/verify/{{wCertOld}}",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "certificates",
+      "verify",
+      "{{wCertOld}}"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W19 관리자가 그 도장을 재승인",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/stamps/{{wStamp5}}/review",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "stamps",
+      "{{wStamp5}}",
+      "review"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"decision\":\"APPROVE\"}"
+    }
+   }
+  },
+  {
+   "name": "W19b 인증서는 새 번호로 재발행된다 (옛 번호는 무효로 남는다)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "console.log('[W19b] ' + it.map(x => x.certType + ':' + x.serialNo + ':' + x.status).join(', '));",
+       "const pg = it.filter(x => x.certType === 'PILGRIMAGE');",
+       "const valid = pg.filter(x => x.status === 'VALID');",
+       "pm.test('유효한 코스 인증서 1장', () => pm.expect(valid).to.have.lengthOf(1));",
+       "pm.test('번호가 옛 번호와 다르다', () => pm.expect(valid[0].serialNo).to.not.eql(pm.environment.get('wCertOld')));",
+       "pm.test('옛 번호는 REVOKED 로 남아 있다', () => pm.expect(pg.some(x => x.serialNo === pm.environment.get('wCertOld') && x.status === 'REVOKED')).to.be.true);",
+       "pm.environment.set('wCertId', valid[0].certificateId);",
+       "pm.environment.set('wCertNew', valid[0].serialNo);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/certificates",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "certificates"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W27 재성립하면 회수됐던 보상이 같은 행으로 돌아온다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "console.log('[W27] ' + it.map(r => r.userRewardId + ':' + r.status).join(', '));",
+       "const target = Number(pm.environment.get(\"wRevokedReward\"));",
+       "const same = it.filter(r => r.userRewardId === target);",
+       "// 재적립이면 새 id 로 한 줄이 더 생긴다. 복귀면 그 id 그대로 한 줄이다.",
+       "pm.test('회수됐던 보상이 같은 id 로 한 줄만 있다', () => pm.expect(same).to.have.lengthOf(1));",
+       "pm.test('그 보상이 GRANTED 로 돌아왔다', () => pm.expect(same[0].status).to.eql('GRANTED'));",
+       "// 재성립으로 회향 보상이 새로 붙는 것은 정상이다 — 그래서 전체 행 수는 늘 수 있다.",
+       "// 여기서 안 되는 것은 '회수된 채 남는 것' 이다.",
+       "pm.test('회수 상태로 남은 보상이 없다', () => pm.expect(it.filter(r => r.status === 'REVOKED')).to.have.lengthOf(0));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W25 관리자 회수 — 사유 없이 → 400",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('400', () => pm.response.to.have.status(400));",
+       "pm.test('COMMON-4000', () => pm.expect(pm.response.json().error.code).to.eql('COMMON-4000'));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/certificates/{{wCertId}}/revoke",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "certificates",
+      "{{wCertId}}",
+      "revoke"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{}"
+    }
+   }
+  },
+  {
+   "name": "W25b 관리자 회수 — 사유 있음 → 200",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/certificates/{{wCertId}}/revoke",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "certificates",
+      "{{wCertId}}",
+      "revoke"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"reason\":\"부정 인증이 확인되어 회수합니다.\"}"
+    }
+   }
+  },
+  {
+   "name": "W25c 같은 인증서를 다시 회수 → 409",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('409', () => pm.response.to.have.status(409));",
+       "pm.test('CERT-4091', () => pm.expect(pm.response.json().error.code).to.eql('CERT-4091'));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/certificates/{{wCertId}}/revoke",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "certificates",
+      "{{wCertId}}",
+      "revoke"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"reason\":\"두 번째 회수 시도\"}"
+    }
+   }
+  },
+  {
+   "name": "W25d 회수된 번호도 진위 확인은 200 + REVOKED",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "pm.test('REVOKED', () => pm.expect(pm.response.json().data.status).to.eql('REVOKED'));",
+       "pm.test('사유는 응답에 싣지 않는다 — 회수됐다는 사실만 알린다', () =>",
+       "  pm.expect(pm.response.json().data).to.not.have.property('revokeReason'));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [],
+    "url": {
+     "raw": "{{baseUrl}}/api/certificates/verify/{{wCertNew}}",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "certificates",
+      "verify",
+      "{{wCertNew}}"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W21 회향이 성립한다 — ACTIVE 12+ 를 전부 완주",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const hh = pm.response.json().data.items.filter(x => x.certType === 'HOEHYANG' && x.status === 'VALID');",
+       "pm.test('회향 인증서 1장', () => pm.expect(hh).to.have.lengthOf(1));",
+       "pm.test('번호 HH-yyyy-6자리', () => pm.expect(hh[0].serialNo).to.match(/^HH-\\d{4}-\\d{6}$/));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/certificates",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "certificates"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W21b 회향 실물 보상이 적립되고 claimable 이 켜진다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "console.log('[W21b] ' + it.map(r => r.rewardType + ':' + r.status + ':' + r.claimable).join(', '));",
+       "const phys = it.filter(r => r.rewardType === 'PHYSICAL' && r.claimable);",
+       "pm.test('신청할 수 있는 실물 보상이 있다', () => pm.expect(phys.length).to.be.above(0));",
+       "pm.environment.set('wPhysicalReward', phys[0].userRewardId);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W26 배송 정보 없이 신청 → 400",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('400', () => pm.response.to.have.status(400));",
+       "pm.test('COMMON-4000', () => pm.expect(pm.response.json().error.code).to.eql('COMMON-4000'));",
+       "pm.test('무엇이 빠졌는지 알려 준다', () => pm.expect(pm.response.json().error.fields).to.be.an('array').that.is.not.empty);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards/{{wPhysicalReward}}/claim",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards",
+      "{{wPhysicalReward}}",
+      "claim"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{}"
+    }
+   }
+  },
+  {
+   "name": "W11 실물 보상 수령 신청 → 접수",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const d = pm.response.json().data;",
+       "pm.test('신청 접수(CLAIMED)', () => pm.expect(d.status).to.eql('CLAIMED'));",
+       "pm.test('접수되면 claimable 이 꺼진다', () => pm.expect(d.claimable).to.eql(false));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards/{{wPhysicalReward}}/claim",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards",
+      "{{wPhysicalReward}}",
+      "claim"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"recipientName\":\"순례자W\",\"phone\":\"010-1234-5678\",\"address\":\"서울시 종로구 우정국로 55\",\"memo\":\"부재 시 경비실\"}"
+    }
+   }
+  },
+  {
+   "name": "W26b 신청 뒤에도 보상 목록에는 배송 정보가 없다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "// 주소는 신청서에만 있고 목록에는 없어야 한다 — 목록은 화면·로그·캐시를 타는 흔한 경로다.",
+       "['address', 'recipientName', 'phone', 'memo'].forEach(k =>",
+       "  pm.test('목록 응답에 ' + k + ' 없음', () => it.forEach(r => pm.expect(r).to.not.have.property(k))));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W12 같은 보상에 다시 신청 → 409",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('409', () => pm.response.to.have.status(409));",
+       "pm.test('REWARD-4092', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4092'));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards/{{wPhysicalReward}}/claim",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards",
+      "{{wPhysicalReward}}",
+      "claim"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"recipientName\":\"순례자W\",\"phone\":\"010-1234-5678\",\"address\":\"서울시 종로구 우정국로 55\",\"memo\":\"부재 시 경비실\"}"
+    }
+   }
+  },
+  {
+   "name": "W13 남의 보상에 신청 → 막힌다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "// 교재 §4-3 은 404 REWARD-4040 을 권하되 \"저장소가 이미 403 이면 유지\" 로 열어 두었다.",
+       "// 이 저장소는 남의 자원에 403 AUTH-4032 를 쓴다(챕터 1부터의 규칙) — 그대로 둔다.",
+       "pm.test('4xx', () => pm.expect(pm.response.code).to.be.within(400, 499));",
+       "pm.test('남의 보상 내용이 실려 오지 않는다', () => pm.expect(pm.response.json().data).to.be.null);",
+       "console.log('[W13] ' + pm.response.code + ' ' + pm.response.json().error.code);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wOtherToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards/{{wPhysicalReward}}/claim",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards",
+      "{{wPhysicalReward}}",
+      "claim"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"recipientName\":\"순례자W\",\"phone\":\"010-1234-5678\",\"address\":\"서울시 종로구 우정국로 55\",\"memo\":\"부재 시 경비실\"}"
+    }
+   }
+  },
+  {
+   "name": "W14 관리자 반려 — 사유 없이 → 400",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('400', () => pm.response.to.have.status(400));",
+       "pm.test('COMMON-4000', () => pm.expect(pm.response.json().error.code).to.eql('COMMON-4000'));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/rewards/claims/{{wPhysicalReward}}/review",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "rewards",
+      "claims",
+      "{{wPhysicalReward}}",
+      "review"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"decision\":\"REJECT\"}"
+    }
+   }
+  },
+  {
+   "name": "W20 관리자 승인",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/rewards/claims/{{wPhysicalReward}}/review",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "rewards",
+      "claims",
+      "{{wPhysicalReward}}",
+      "review"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"decision\":\"APPROVE\"}"
+    }
+   }
+  },
+  {
+   "name": "W20b 이미 처리된 것을 다시 승인 → 409",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('409', () => pm.response.to.have.status(409));",
+       "pm.test('REWARD-4090 허용되지 않는 전이', () => pm.expect(pm.response.json().error.code).to.eql('REWARD-4090'));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/rewards/claims/{{wPhysicalReward}}/review",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "rewards",
+      "claims",
+      "{{wPhysicalReward}}",
+      "review"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"decision\":\"APPROVE\"}"
+    }
+   }
+  },
+  {
+   "name": "W22 회향 뒤 완주 하나를 다시 취소",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/stamps/{{wStamp5}}/review",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "stamps",
+      "{{wStamp5}}",
+      "review"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"decision\":\"REJECT\",\"reason\":\"재확인 결과 인증이 성립하지 않습니다.\"}"
+    }
+   }
+  },
+  {
+   "name": "W22b 회향 인증서가 회수된다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "console.log('[W22b] ' + it.map(x => x.certType + ':' + x.serialNo + ':' + x.status).join(', '));",
+       "pm.test('유효한 회향 인증서 0장', () => pm.expect(it.filter(x => x.certType === 'HOEHYANG' && x.status === 'VALID')).to.have.lengthOf(0));",
+       "pm.test('회향 인증서 행은 남아 있다', () => pm.expect(it.some(x => x.certType === 'HOEHYANG')).to.be.true);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/certificates",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "certificates"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W22c 이미 움직인 실물 보상은 회수하지 않는다 — 사람이 본다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "const phys = it.find(r => r.userRewardId === Number(pm.environment.get('wPhysicalReward')));",
+       "console.log('[W22c] 실물 보상 상태 ' + (phys && phys.status));",
+       "// 승인까지 간 실물은 이미 택배를 탔을 수 있다. 장부만 깨끗하게 만들면 실제와 달라진다.",
+       "pm.test('지급 처리된 실물은 REVOKED 가 아니다', () => pm.expect(phys.status).to.not.eql('REVOKED'));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/rewards",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "rewards"
+     ]
+    }
+   }
+  },
+  {
+   "name": "W22d 관리자 심사 목록에서 사람이 볼 것이 맨 위로 온다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const it = pm.response.json().data.items;",
+       "console.log('[W22d] 심사 목록 ' + it.length + '건 — ' + it.map(r => r.status + ':' + r.needsReview).join(', '));",
+       "if (it.length > 1) { pm.test('needs_review 가 맨 위', () => pm.expect(it[0].needsReview).to.be.true); }",
+       "else { pm.test('목록이 배열로 온다', () => pm.expect(it).to.be.an('array')); }",
+       "// 배송 정보가 실리는 유일한 응답이다 — 보내야 하는 사람은 관리자다.",
+       "const mine = it.find(r => r.userRewardId === Number(pm.environment.get('wPhysicalReward')));",
+       "if (mine) { pm.test('심사 목록에는 주소가 실린다', () => pm.expect(mine.address).to.be.a('string').and.not.empty); }"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/admin/rewards/claims/pending",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "admin",
+      "rewards",
+      "claims",
+      "pending"
+     ]
+    }
+   }
+  },
+  {
+   "name": "U-D5 인증서를 가진 사용자가 탈퇴한다",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('204', () => pm.response.to.have.status(204));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "DELETE",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     },
+     {
+      "key": "Authorization",
+      "value": "Bearer {{wToken}}"
+     }
+    ],
+    "url": {
+     "raw": "{{baseUrl}}/api/users/me",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "users",
+      "me"
+     ]
+    },
+    "body": {
+     "mode": "raw",
+     "raw": "{\"password\":\"Test1234!\"}"
+    }
+   }
+  },
+  {
+   "name": "U-D5b 공개 진위 확인 — 이름 자리에 탈퇴회원",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test('200', () => pm.response.to.have.status(200));",
+       "const d = pm.response.json().data;",
+       "console.log('[U-D5b] ' + d.serialNo + ' ' + d.status + ' ' + d.holderMasked);",
+       "// 번호는 남는다 — 제3자가 확인하던 값이라 사라지면 안 된다. 대신 이름 자리가 비워진다.",
+       "pm.test('탈퇴회원', () => pm.expect(d.holderMasked).to.eql('탈퇴회원'));",
+       "pm.test('상태는 그대로 REVOKED', () => pm.expect(d.status).to.eql('REVOKED'));",
+       "pm.test('개인정보 키는 여전히 없다', () => ['userId','email','phone','address','nickname'].forEach(k => pm.expect(d).to.not.have.property(k)));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [],
+    "url": {
+     "raw": "{{baseUrl}}/api/certificates/verify/{{wCertOld}}",
+     "host": [
+      "{{baseUrl}}"
+     ],
+     "path": [
+      "api",
+      "certificates",
+      "verify",
+      "{{wCertOld}}"
+     ]
+    }
+   }
+  }
+ ],
+ "event": [
+  {
+   "listen": "test",
+   "script": {
+    "type": "text/javascript",
+    "exec": [
+     "const p = pm.request.url.getPath();",
+     "// 204 는 본문이 없다(탈퇴). 봉투 규약은 본문이 있는 응답에만 적용된다.",
+     "const hasBody = pm.response.code !== 204 && pm.response.text() && pm.response.text().length > 0;",
+     "if (!p.endsWith('/health') && !p.endsWith('/env')) {",
+     "  pm.test('X-Request-Id 32자', () => pm.expect(pm.response.headers.get('X-Request-Id')).to.have.lengthOf(32));",
+     "  if (hasBody) {",
+     "    pm.test('timestamp +09:00', () => pm.expect(pm.response.json().timestamp).to.match(/\\+09:00$/));",
+     "    pm.test('success 키 존재', () => pm.expect(pm.response.json()).to.have.property('success'));",
+     "  }",
+     "}"
+    ]
+   }
+  }
+ ],
+ "variable": [
+  {
+   "key": "H",
+   "value": ""
+  }
+ ]
+}

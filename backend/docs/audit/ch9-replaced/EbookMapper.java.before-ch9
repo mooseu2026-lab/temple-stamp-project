@@ -1,0 +1,37 @@
+package com.templestamp.ebook;
+
+import com.templestamp.ebook.dto.EbookRow;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
+import java.util.Optional;
+
+@Mapper
+public interface EbookMapper {
+
+    /**
+     * 대기열 등록. (순례, 종류) 에 UNIQUE 가 걸려 있어 완주 처리가 재시도돼도 두 번 쌓이지 않는다.
+     * 영향 행 수가 0 이면 이미 있었다는 뜻이다.
+     */
+    int enqueue(Ebook ebook);
+
+    Optional<Ebook> findById(@Param("ebookId") Long ebookId);
+
+    /**
+     * 순례에 매이지 않는 전자책(중간본·회향본)이 이미 있는가.
+     * QUEUED·BUILDING·READY 를 "있다" 로 본다 — FAILED 만 다시 큐에 넣을 수 있다.
+     */
+    Optional<Ebook> findAliveByUserAndType(@Param("userId") Long userId,
+                                           @Param("ebookType") String ebookType);
+
+    Optional<Ebook> findByPilgrimageAndType(@Param("pilgrimageId") Long pilgrimageId,
+                                            @Param("ebookType") String ebookType);
+
+    List<EbookRow> findRowsByUserId(@Param("userId") Long userId);
+
+    /** 조판 결과 등록. 키가 들어오면 READY 로 옮긴다. */
+    int updateFiles(@Param("ebookId") Long ebookId,
+                    @Param("pdfKey") String pdfKey,
+                    @Param("epubKey") String epubKey);
+}

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# 검증 세트 한 벌. 몇 번을 돌려도 같은 결과가 나오도록 앞뒤로 정리한다.
+#
+#   정리 → newman → 보조 SQL 채점 → 정리
+#
+# 보조 SQL 을 뒤쪽 정리보다 먼저 돌리는 것이 중요하다. 정리가 먼저 지나가면
+# all-checkpoints.sql 이 세는 검증 데이터가 이미 사라져 전부 0 이 나온다.
+# 정리를 안 하면 반대로 검증 계정·사찰이 누적돼 ④·⑦ 이 실행 횟수만큼 커진다.
+cd "$(dirname "$0")"
+VERIFY=../backend/docs/verify
+MYSQL=${MYSQL_BIN:-mysql}
+DB_USER=${DB_USER:-root}
+DB_PASS=${DB_PASS:-1234}
+
+# mysql 오류를 버리지 않는다. 비밀번호 경고만 걸러 내고 나머지는 그대로 보여 준다 —
+# 정리가 왜 멈췄는지는 그 한 줄에만 적혀 있다(챕터 7 에서 FK 1451 을 못 보고 지나쳤다).
+MYSQL_ERR=$(mktemp)
+mysql_run() {
+  "$MYSQL" -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 "$@" 2>"$MYSQL_ERR"
+  local rc=$?
+  grep -v "Using a password" "$MYSQL_ERR" >&2 || true
+  return $rc
+}
+# mysql 은 첫 오류에서 멈춘다. 정리가 중간에 서면 남은 데이터가 이번 실행과 다음 실행을 함께 오염시킨다.
+# 그러므로 알리는 것으로 끝내지 않고 **여기서 멈춘다** — 오염된 상태로 낸 숫자는 숫자가 아니다.
+clean() {
+  if ! mysql_run < "$VERIFY/cleanup.sql"; then
+    echo "❌ cleanup.sql 이 중간에 멈췄다(위 오류). 남은 데이터가 이번 실행을 못 믿게 만든다 — 여기서 멈춘다."
+    exit 1
+  fi
+}
+
+clean
+# --working-dir .. : 폴더 N 이 올리는 CSV 가 backend/docs/verify/body 에 있다.
+#   newman 은 작업 폴더 밖의 파일을 읽지 않으므로 프로젝트 뿌리를 작업 폴더로 준다.
+npx --yes newman run temple-stamp-all.postman_collection.json -e all.postman_environment.json --working-dir .. \
+  --reporters cli,json --reporter-json-export "$VERIFY/all-newman-result.json"
+STATUS=$?
+
+# 회향은 "ACTIVE 코스를 전부 완주" 라 데이터를 만들어 줘야 볼 수 있다(챕터 7 §7-3).
+# 코스 12개를 잠시 ACTIVE 로 올리고 회향 컬렉션을 한 번 더 돌린 뒤, 반드시 DRAFT 로 되돌린다.
+# teardown 을 빼먹으면 다음 실행의 W15("ACTIVE 1개라 회향 없음")가 조용히 깨진다.
+mysql_run --table < "$VERIFY/w-hoehyang-setup.sql" > "$VERIFY/w-hoehyang-result.txt"
+npx --yes newman run w2-hoehyang.postman_collection.json -e all.postman_environment.json \
+  --reporters cli,json --reporter-json-export "$VERIFY/w2-newman-result.json"
+W2_STATUS=$?
+mysql_run --table < "$VERIFY/w-hoehyang-teardown.sql" >> "$VERIFY/w-hoehyang-result.txt"
+[ $STATUS -eq 0 ] && STATUS=$W2_STATUS
+
+# 보조 SQL 채점 — Postman 이 못 보는 것(잠금 카운트·revoked·seen·인증서 상태·UPSERT 행 수)
+mysql_run --table < "$VERIFY/all-checkpoints.sql" > "$VERIFY/all-sql-result.txt"
+
+clean
+exit $STATUS

@@ -1,0 +1,182 @@
+-- backend/docs/verify/cleanup.sql
+-- 검증 세트가 남긴 데이터를 지우고 잠금을 원복한다. run-all.sh 가 newman 실행 전·후로 돌린다.
+--
+-- 왜 전·후 두 번인가: 정리 없이 두 번 돌리면 검증 계정·사찰이 누적돼
+-- all-checkpoints.sql 의 ④(user_agreement)·⑦(site_distance)가 2배로 세어진다.
+-- 앞에서 지우면 이번 실행이 깨끗하고, 뒤에서 지우면 다음 사람에게 깨끗하게 넘어간다.
+--
+-- 순서는 FK 를 거스르지 않게 아래에서 위로:
+--   site_distance → course_site → course → user_agreement → users → site
+--   (user_agreement 는 users 를 RESTRICT 로 잡고, course_site 는 course·site 를 RESTRICT 로 잡는다)
+USE temple_stamp_project;
+
+DELETE FROM site_distance
+ WHERE site_a_id IN (SELECT site_id FROM site WHERE name LIKE '검증사찰%')
+    OR site_b_id IN (SELECT site_id FROM site WHERE name LIKE '검증사찰%');
+
+DELETE FROM course_site
+ WHERE course_id IN (SELECT course_id FROM course WHERE name = '검증코스')
+    OR site_id   IN (SELECT site_id   FROM site   WHERE name LIKE '검증사찰%');
+
+-- 중간 점검 B(R 폴더): 이후 챕터 코드 스모크가 남기는 것들.
+-- thinkbox 는 챕터 5 정리(아래)가 통째로 지우지만, 명상 기록과 인쇄 주문은 그쪽 조건에 안 걸린다.
+-- 이걸 빼면 R07·R14 가 실행 횟수만큼 쌓이고 R15·R25 의 "0건" 단언이 두 번째 실행부터 깨진다.
+-- 챕터 6: 사진(개인 소장). thinkbox 는 아래 챕터 5 정리가 함께 지운다.
+DELETE FROM photo
+ WHERE user_id IN (SELECT user_id FROM users
+                    WHERE email LIKE 'reg-%@test.com'
+                       OR email LIKE 'lock-%@test.com'
+                       OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+DELETE FROM photo WHERE user_id IN (SELECT user_id FROM users WHERE email = 'admin@templestamp.local');
+
+DELETE FROM meditation_log
+ WHERE user_id IN (SELECT user_id FROM users
+                    WHERE email LIKE 'reg-%@test.com'
+                       OR email LIKE 'lock-%@test.com'
+                       OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+DELETE FROM print_order
+ WHERE user_id IN (SELECT user_id FROM users
+                    WHERE email LIKE 'reg-%@test.com'
+                       OR email LIKE 'lock-%@test.com'
+                       OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+-- 관리자(admin@templestamp.local)가 R 폴더에서 남기는 것도 함께 지운다 — 계정은 지우지 않는다.
+DELETE FROM meditation_log WHERE user_id IN (SELECT user_id FROM users WHERE email = 'admin@templestamp.local');
+DELETE FROM print_order    WHERE user_id IN (SELECT user_id FROM users WHERE email = 'admin@templestamp.local');
+DELETE FROM thinkbox
+ WHERE source = 'DIRECT'
+   AND user_id IN (SELECT user_id FROM users WHERE email = 'admin@templestamp.local');
+
+-- 챕터 7(W·W2 폴더) + 동시성 점검 계정(conc-a·conc-b). FK 를 거스르지 않게 위에서부터 지운다.
+--   user_reward → certificate → ebook → thinkbox → stamp → pilgrimage → user_agreement → users
+-- cert_serial(일련번호)은 되돌리지 않는다 — 회수한 번호를 다시 쓰지 않는 것이 규칙이다(§3-1).
+-- 그래서 채점은 번호 값이 아니라 형식과 중복 0 으로 본다.
+--
+-- ★ 이 블록은 아래 "R22·R23 원고 삭제" 보다 반드시 앞이다. 이 계정들의 도장이 그 원고를
+--   참조하고 있어, 뒤에 두면 FK 1451 로 cleanup 이 통째로 멈춘다(mysql 은 첫 오류에서 끝난다).
+-- 배송 정보는 user_reward 를 RESTRICT 로 잡는다 — 먼저 지워야 한다.
+DELETE FROM reward_claim
+ WHERE user_reward_id IN (SELECT user_reward_id FROM user_reward
+                           WHERE user_id IN (SELECT user_id FROM users
+                                              WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com')));
+
+DELETE FROM user_reward
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com'));
+
+DELETE FROM certificate
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com'));
+
+DELETE FROM ebook
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com'));
+
+DELETE FROM thinkbox
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com'));
+
+DELETE FROM stamp
+ WHERE pilgrimage_id IN (SELECT pilgrimage_id FROM pilgrimage
+                          WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com')));
+
+DELETE FROM phrase_seen
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com'));
+DELETE FROM task_seen
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com'));
+
+DELETE FROM pilgrimage
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com'));
+
+DELETE FROM user_agreement
+ WHERE user_id IN (SELECT user_id FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com'));
+
+DELETE FROM users WHERE (email LIKE 'w-%@test.com' OR email LIKE 'conc-%@test.com');
+
+-- W2 가 중간에 끊겨 코스가 ACTIVE 로 남았을 때를 대비한 원복(정상 실행이면 teardown 이 이미 했다).
+UPDATE course SET status = 'DRAFT' WHERE course_id BETWEEN 37 AND 48 AND status = 'ACTIVE';
+-- R22·R23 이 넣는 점검용 원고(versionNo/variantNo 99)도 되돌린다.
+DELETE FROM expansion_phrase WHERE verse_no = 1 AND tier = 'AGE30' AND version_no = 2;
+DELETE FROM mission          WHERE verse_no = 1 AND tier = 'AGE30' AND variant_no = 2;
+
+
+-- 챕터 5: 스탬프가 남기는 것들. FK 를 거스르지 않게 위에서부터 지운다.
+--   user_reward → thinkbox → stamp → (아래의) pilgrimage
+-- 이걸 빼면 두 번째 실행에서 "하루 5개"·"예외 접수 2건" 한도가 먼저 걸려 T 폴더가 통째로 429 가 된다.
+DELETE FROM reward_claim
+ WHERE user_reward_id IN (SELECT user_reward_id FROM user_reward
+                           WHERE user_id IN (SELECT user_id FROM users
+                                              WHERE email LIKE 'reg-%@test.com'
+                                                 OR email LIKE 'lock-%@test.com'
+                                                 OR email = 'checkpoint@test.com'
+                                                 OR email = 'xcheck@test.com'));
+
+DELETE FROM user_reward
+ WHERE user_id IN (SELECT user_id FROM users
+                    WHERE email LIKE 'reg-%@test.com'
+                       OR email LIKE 'lock-%@test.com'
+                       OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+DELETE FROM thinkbox
+ WHERE user_id IN (SELECT user_id FROM users
+                    WHERE email LIKE 'reg-%@test.com'
+                       OR email LIKE 'lock-%@test.com'
+                       OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+DELETE FROM stamp
+ WHERE pilgrimage_id IN (SELECT pilgrimage_id FROM pilgrimage
+                          WHERE user_id IN (SELECT user_id FROM users
+                                             WHERE email LIKE 'reg-%@test.com'
+                                                OR email LIKE 'lock-%@test.com'
+                                                OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com'));
+
+DELETE FROM phrase_seen
+ WHERE user_id IN (SELECT user_id FROM users
+                    WHERE email LIKE 'reg-%@test.com'
+                       OR email LIKE 'lock-%@test.com'
+                       OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+DELETE FROM task_seen
+ WHERE user_id IN (SELECT user_id FROM users
+                    WHERE email LIKE 'reg-%@test.com'
+                       OR email LIKE 'lock-%@test.com'
+                       OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+-- QR 회전(T14)으로 올라간 버전을 되돌린다. 안 돌리면 다음 실행의 T01 토큰이 구버전이 된다.
+UPDATE site SET qr_version = 1 WHERE site_id <= 5;
+
+DELETE FROM pilgrimage
+ WHERE course_id IN (SELECT course_id FROM course WHERE name = '검증코스')
+    OR user_id   IN (SELECT user_id FROM users
+                      WHERE email LIKE 'reg-%@test.com'
+                         OR email LIKE 'lock-%@test.com'
+                         OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+DELETE FROM course WHERE name = '검증코스';
+
+DELETE FROM user_agreement
+ WHERE user_id IN (SELECT user_id FROM users
+                    WHERE email LIKE 'reg-%@test.com'
+                       OR email LIKE 'lock-%@test.com'
+                       OR email = 'checkpoint@test.com'
+                       OR email = 'xcheck@test.com');
+
+DELETE FROM users
+ WHERE email LIKE 'reg-%@test.com'
+    OR email LIKE 'lock-%@test.com'
+    OR email = 'xcheck@test.com';
+
+-- i18n·viewpoint·badge 는 site 의 CASCADE 로 함께 사라진다
+DELETE FROM site WHERE name LIKE '검증사찰%' OR name = '힌트없음';
+
+-- 잠금 원복. 위에서 계정을 지우므로 보통은 대상이 없지만,
+-- 실행이 중간에 끊겨 계정이 남은 경우를 대비해 남겨 둔다.
+UPDATE users SET login_fail_count = 0, locked_until = NULL
+ WHERE email LIKE 'lock-%@test.com';

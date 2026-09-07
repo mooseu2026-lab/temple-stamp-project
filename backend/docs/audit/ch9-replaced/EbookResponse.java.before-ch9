@@ -1,0 +1,23 @@
+package com.templestamp.ebook.dto;
+
+import java.time.LocalDateTime;
+
+/**
+ * 전자책 목록 한 건을 내려주는 DTO Record입니다.
+ * 저장소 키 대신 downloadable 불리언만 주어 내부 경로가 노출되지 않게 합니다.
+ * [사용 위치] EbookService 가 EbookRow → 변환 → Controller 반환
+ */
+public record EbookResponse(
+        Long ebookId,
+        String courseName,          // 회향본이면 null
+        String ebookType,
+        String status,
+        boolean downloadable,       // pdfKey 또는 epubKey 존재 여부 — 계산값
+        LocalDateTime createdAt
+) {
+    public static EbookResponse from(EbookRow row) {
+        boolean downloadable = row.getPdfKey() != null || row.getEpubKey() != null;
+        return new EbookResponse(row.getEbookId(), row.getCourseName(), row.getEbookType(),
+                row.getStatus(), downloadable, row.getCreatedAt());
+    }
+}

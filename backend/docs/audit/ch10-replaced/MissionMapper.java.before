@@ -1,0 +1,27 @@
+package com.templestamp.verse;
+
+import com.templestamp.global.type.Tier;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.Optional;
+
+@Mapper
+public interface MissionMapper {
+
+    /** 이 코스에서 아직 안 받은 미션 하나. 검수를 마친 것을 먼저 준다. */
+    Optional<Mission> findUnseen(@Param("userId") Long userId,
+                                 @Param("courseId") Long courseId,
+                                 @Param("verseNo") Integer verseNo,
+                                 @Param("tier") Tier tier);
+
+    /** 변형을 다 받아 본 경우의 대체안. */
+    Optional<Mission> findAny(@Param("verseNo") Integer verseNo, @Param("tier") Tier tier);
+
+    Optional<Mission> findById(@Param("missionId") Long missionId);
+
+    int upsert(Mission mission);
+
+    /** 그 (구절·대상) 조합의 다음 변형 번호. 없으면 1. */
+    int nextVariantNo(@Param("verseNo") Integer verseNo, @Param("tier") Tier tier);
+}

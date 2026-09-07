@@ -1,0 +1,460 @@
+#!/usr/bin/env bash
+# backend/docs/verify/db-check.sh — DB 연결 지속성 점검 (중간 점검 B §2, H1~H9)
+#
+#   bash backend/docs/verify/db-check.sh before   # H1·H3·H6·H7·H8·H9 (newman 앞)
+#   bash backend/docs/verify/db-check.sh after    # H2·H4·H5           (newman 뒤)
+#   bash backend/docs/verify/db-check.sh all      # 전부
+#
+# H3 은 실제로 10분을 기다린다. 유휴 뒤에 커넥션이 살아 있는지는 기다려 보지 않으면 알 수 없다.
+# 결과는 화면과 docs/verify/db-check-result.txt 에 동시에 쌓인다(append — 전반/후반이 한 파일에 남는다).
+cd "$(dirname "$0")"
+OUT="db-check-result.txt"
+BASE=${BASE_URL:-http://localhost:8080}
+# 스키마 이름을 밖에서 갈아 끼울 수 있어야 배포 리허설(빈 DB)에 같은 도구를 쓸 수 있다.
+DB=${DB_NAME:-temple_stamp_project}
+DB_USER=${DB_USER:-root}
+DB_PASS=${DB_PASS:-1234}
+MYSQL=${MYSQL_BIN:-mysql}
+PHASE=${1:-all}
+# H5 가 "이번 실행 이후" 를 가릴 기준. 문자열 비교로 쓰므로 자릿수가 고정된 형식이어야 한다.
+RUN_STARTED_AT=$(date '+%Y-%m-%d %H:%M:%S')
+
+q() { "$MYSQL" -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 -t -e "USE $DB; $1" 2>/dev/null; }
+# 숫자 하나만 받을 때. q() 는 -t 라 표 모양 문자열이 돌아온다 — 비교에 쓰면 늘 거짓이다.
+# 윈도우 mysql 은 줄 끝에  을 붙이므로 함께 지운다(정리.md §6-10).
+qn() { "$MYSQL" -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 -N -B -e "USE $DB; $1" 2>/dev/null | tr -d "" | head -1; }
+say() { echo "$@" | tee -a "$OUT"; }
+run() { echo "$1" | tee -a "$OUT"; shift; { "$@" 2>&1; } | tee -a "$OUT"; echo | tee -a "$OUT"; }
+
+[ "$PHASE" = "before" ] || [ "$PHASE" = "all" ] && : > "$OUT"
+say "=================================================================="
+say " DB 연결 지속성 점검 — $(date '+%Y-%m-%d %H:%M:%S')  phase=$PHASE"
+say "=================================================================="
+
+# ─────────────────────────────────────────────────────────────── 전반
+if [ "$PHASE" = "before" ] || [ "$PHASE" = "all" ]; then
+
+say ""
+say "── H1  기동 직후 연결 ────────────────────────────────────────────"
+say "기대: /health 200 UP. components.db 는 노출하지 않는 것이 정상이다."
+say "HTTP $(curl -s -o /tmp/h1.$$ -w '%{http_code}' "$BASE/health")  $(cat /tmp/h1.$$)"; rm -f /tmp/h1.$$
+run "DB 왕복:" q "SELECT 1 AS ping;"
+
+say ""
+say "── H6  시간대 ───────────────────────────────────────────────────"
+say "기대: Asia/Seoul 또는 +09:00. SYSTEM 이면 OS 시계를 따른다(정리.md §5-2 9번)."
+run "" q "SELECT @@global.time_zone AS global_tz, @@session.time_zone AS session_tz, NOW() AS mysql_now, CURDATE() AS mysql_today;"
+say "호스트 시각: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+say ""
+say "── H7  외래키 무결성 ────────────────────────────────────────────"
+say "기대: 아래 네 수치가 전부 0."
+run "" q "SELECT
+  (SELECT COUNT(*) FROM stamp s      LEFT JOIN site t ON t.site_id = s.site_id
+     WHERE s.site_id IS NOT NULL AND t.site_id IS NULL)                       AS stamp_site_orphan,
+  (SELECT COUNT(*) FROM slot_site ss LEFT JOIN site t ON t.site_id = ss.site_id
+     WHERE t.site_id IS NULL)                                                 AS slot_site_orphan,
+  (SELECT COUNT(*) FROM course_site cs LEFT JOIN site t ON t.site_id = cs.site_id
+     WHERE t.site_id IS NULL)                                                 AS course_site_orphan,
+  (SELECT COUNT(*) FROM stamp s      LEFT JOIN course_site cs ON cs.course_site_id = s.completed_course_site_id
+     WHERE s.completed_course_site_id IS NOT NULL AND cs.course_site_id IS NULL) AS completed_slot_orphan;"
+
+say ""
+say "── H8  문자셋 ───────────────────────────────────────────────────"
+say "기대: utf8mb4 / utf8mb4_unicode_ci, 한글 왕복이 그대로."
+run "" q "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
+          FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '$DB';"
+run "한글 왕복(닉네임):" q "SELECT nickname FROM users WHERE email = 'admin@templestamp.local';"
+run "한글 왕복(리터럴):" q "SELECT '확인포인트' AS roundtrip, CHAR_LENGTH('확인포인트') AS chars;"
+
+say ""
+say "── H9  sql.init 멱등 ────────────────────────────────────────────"
+say "기대: bootRun 을 몇 번 켜도 표 31개, 시드 행 수가 같다."
+say "      (schema.sql 은 CREATE TABLE IF NOT EXISTS, data.sql 은 INSERT IGNORE)"
+run "" q "SELECT
+  (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB') AS tables_,
+  (SELECT COUNT(*) FROM site WHERE seed_key IS NOT NULL)                    AS site_seeded,
+  (SELECT COUNT(*) FROM course WHERE name LIKE '%공양의 길')                 AS course_seeded,
+  (SELECT COUNT(*) FROM slot_site)                                          AS slot_site,
+  (SELECT COUNT(*) FROM site_element)                                       AS site_element,
+  (SELECT COUNT(*) FROM region)                                             AS region_;"
+
+say ""
+say "── H3  장시간 유휴 후 재연결 (10분 실제 대기) ────────────────────"
+say "기대: 10분 놀린 뒤에도 첫 요청이 200. HikariCP maxLifetime 이 MySQL wait_timeout 보다"
+say "      짧아야 한다 — 반대면 서버가 먼저 끊은 커넥션을 풀이 건네주고 그 요청만 죽는다."
+run "MySQL 타임아웃:" q "SELECT @@global.wait_timeout AS wait_timeout_s, @@global.interactive_timeout AS interactive_s;"
+say "HikariCP maxLifetime: $(grep -i 'max-lifetime' ../../../src/main/resources/application*.yml 2>/dev/null || echo '설정 없음 → 기본 1800000ms(30분)')"
+say "warm-up: HTTP $(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/regions")"
+say "$(date '+%H:%M:%S') 부터 10분 대기…"
+sleep 600
+say "$(date '+%H:%M:%S') 대기 끝. 유휴 뒤 첫 요청:"
+say "  /api/regions      HTTP $(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/regions")"
+say "  /api/courses/1    HTTP $(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/courses/1")"
+say "  /health           HTTP $(curl -s -o /dev/null -w '%{http_code}' "$BASE/health")"
+run "유휴 뒤 서버 쪽 커넥션:" q "SHOW STATUS LIKE 'Threads_connected';"
+
+say ""
+say "── H2  커넥션 수 (newman 전) ─────────────────────────────────────"
+run "" q "SHOW STATUS LIKE 'Threads_connected';"
+say "위 값을 newman 뒤(after)와 비교한다. 차이가 풀 크기(기본 10)를 넘으면 누수다."
+
+fi
+
+# ─────────────────────────────────────────────────────────────── 후반
+if [ "$PHASE" = "after" ] || [ "$PHASE" = "all" ]; then
+
+say ""
+say ""
+say "── H13  챕터 7 표·제약 정합 (전체 점검 D) ───────────────────────"
+say "기대: 표 다섯이 있고, 유니크·외래키·생성 컬럼이 schema.sql 과 같다. 차이 0."
+say "     ※ 교재의 completion 표는 이 저장소에서 pilgrimage 다(이름만 다르고 역할이 같다)."
+H13_BAD=0
+need_table() {   # $1=표 이름
+  local n
+  n=$(qn "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = '$DB' AND TABLE_NAME = '$1';")
+  if [ "${n:-0}" = "1" ]; then say "  ✅ 표 $1"; else say "  ❌ 표 $1 이 없다"; H13_BAD=$((H13_BAD + 1)); fi
+}
+need_index() {   # $1=표  $2=인덱스 이름  $3=유니크(1/0)
+  local n
+  n=$(qn "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = '$DB' AND TABLE_NAME = '$1' AND INDEX_NAME = '$2' AND NON_UNIQUE = $((1 - $3));")
+  if [ "${n:-0}" -gt 0 ]; then say "  ✅ $1.$2"; else say "  ❌ $1.$2 가 없다"; H13_BAD=$((H13_BAD + 1)); fi
+}
+need_column() { # $1=표  $2=컬럼  $3=설명(선택)
+  local n
+  n=$(qn "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '$DB' AND TABLE_NAME = '$1' AND COLUMN_NAME = '$2';")
+  if [ "${n:-0}" = "1" ]; then say "  ✅ $1.$2 $3"; else say "  ❌ $1.$2 가 없다 $3"; H13_BAD=$((H13_BAD + 1)); fi
+}
+need_fk() {     # $1=제약 이름
+  local n
+  n=$(qn "SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = '$DB' AND CONSTRAINT_NAME = '$1' AND CONSTRAINT_TYPE = 'FOREIGN KEY';")
+  if [ "${n:-0}" -gt 0 ]; then say "  ✅ FK $1"; else say "  ❌ FK $1 이 없다"; H13_BAD=$((H13_BAD + 1)); fi
+}
+
+need_table pilgrimage
+need_table certificate
+need_table cert_serial
+need_table user_reward
+need_table reward_claim
+need_table storage_orphan
+need_column users status "(챕터 1 보강 — 탈퇴해도 행은 남는다)"
+need_column users deleted_at
+need_column storage_orphan file_key
+need_column storage_orphan reason
+need_index pilgrimage uk_pilgrimage 1
+need_index certificate uk_certificate_serial 1
+need_index certificate uk_certificate_valid_pilgrimage 1
+need_index certificate idx_certificate_pilgrimage 0
+need_index user_reward uk_user_reward_stamp 1
+need_index user_reward uk_user_reward_pilgrimage 1
+need_index reward_claim uk_reward_claim 1
+need_column certificate valid_pilgrimage_id "(생성 컬럼 — 조건부 유일성의 핵심)"
+need_column certificate status
+need_column certificate revoked_at
+need_column certificate revoke_reason
+need_column user_reward needs_review
+need_column user_reward tracking_no
+need_fk fk_reward_claim_user_reward_id
+need_fk fk_certificate_pilgrimage_id
+# 생성 컬럼이 "생성 컬럼" 인지까지 본다. 평범한 컬럼으로 바뀌면 조건부 유일성이 조용히 깨진다.
+GEN=$(qn "SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '$DB' AND TABLE_NAME = 'certificate' AND COLUMN_NAME = 'valid_pilgrimage_id';")
+case "$GEN" in
+  *GENERATED*) say "  ✅ valid_pilgrimage_id 는 생성 컬럼이다 ($GEN)" ;;
+  *) say "  ❌ valid_pilgrimage_id 가 생성 컬럼이 아니다 ($GEN)"; H13_BAD=$((H13_BAD + 1)) ;;
+esac
+say "  → 차이 $H13_BAD"
+
+say ""
+say "── H14  정리.md §5-1 ALTER 적용 여부 (전체 점검 D) ────────────────"
+say "기대: 손으로 돌려야 하는 ALTER 열하나가 전부 이 DB 에 들어 있다. 누락 0."
+say "     schema.sql 은 이미 있는 표를 고치지 않는다 — 그래서 배포마다 이 목록을 확인해야 한다."
+H14_BAD=0
+alter_done() {  # $1=번호  $2=설명  $3=검사 SQL(1 이면 적용됨)
+  local n
+  n=$(qn "$3")
+  if [ "${n:-0}" -gt 0 ]; then say "  ✅ $1 $2"; else say "  ❌ $1 $2 — 적용 안 됨"; H14_BAD=$((H14_BAD + 1)); fi
+}
+alter_done "①" "stamp.expansion_phrase_id + FK" "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='stamp' AND COLUMN_NAME='expansion_phrase_id';"
+alter_done "②" "stamp.site_id + FK" "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='stamp' AND COLUMN_NAME='site_id';"
+alter_done "③" "site.seed_key + uk" "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DB' AND INDEX_NAME='uk_site_seed_key';"
+alter_done "④" "user_reward.needs_review + CHECK 에 REVOKED" "SELECT COUNT(*) FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB' AND CONSTRAINT_NAME='chk_user_reward_status' AND CHECK_CLAUSE LIKE '%REVOKED%';"
+alter_done "⑤" "certificate.status·revoked_at·revoke_reason" "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='certificate' AND COLUMN_NAME IN ('status','revoked_at','revoke_reason') HAVING COUNT(*)=3;"
+alter_done "⑥" "certificate 조건부 유니크(생성 컬럼)" "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DB' AND INDEX_NAME='uk_certificate_valid_pilgrimage';"
+alter_done "⑦" "user_reward.tracking_no" "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='user_reward' AND COLUMN_NAME='tracking_no';"
+alter_done "⑧" "reward_claim 표" "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='reward_claim';"
+alter_done "⑨" "users.status·deleted_at" "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='users' AND COLUMN_NAME IN ('status','deleted_at') HAVING COUNT(*)=2;"
+alter_done "⑩" "users.password NULL 허용(탈퇴가 비운다)" "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='users' AND COLUMN_NAME='password' AND IS_NULLABLE='YES';"
+alter_done "⑪" "storage_orphan 표" "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='storage_orphan';"
+# 옛 유니크가 남아 있으면 회수 뒤 재발행이 막힌다 — 지워졌는지도 함께 본다.
+OLD_UK=$(qn "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DB' AND INDEX_NAME='uk_certificate_pilgrimage';")
+if [ "${OLD_UK:-0}" = "0" ]; then say "  ✅ 옛 uk_certificate_pilgrimage 는 지워졌다"; else say "  ❌ 옛 uk_certificate_pilgrimage 가 남아 있다 — 재발행이 막힌다"; H14_BAD=$((H14_BAD + 1)); fi
+say "  → 누락 $H14_BAD"
+say ""
+say "── H15  챕터 8 원고 — 시더의 기본 원고와 표 정합 ─────────────────"
+say "기대: 기본 원고 MISSION 5 + EXT 5 가 APPROVED 로 있어야 한다."
+say "     이 열 편이 없으면 승인 원고가 없는 구에서 미션이 MS-4093 으로 막힌다(함정 9)."
+H15_BAD=0
+h15() {  # $1=설명  $2=기대값  $3=SQL
+  local n
+  n=$(qn "$3")
+  if [ "${n:-x}" = "$2" ]; then say "  ✅ $1 ($n)"; else say "  ❌ $1 — 기대 $2, 실제 ${n:-없음}"; H15_BAD=$((H15_BAD + 1)); fi
+}
+h15 "기본 MISSION 원고" 5 "SELECT COUNT(*) FROM manuscript WHERE site_id IS NULL AND kind='MISSION' AND status='APPROVED';"
+h15 "기본 EXT 원고" 5 "SELECT COUNT(*) FROM manuscript WHERE site_id IS NULL AND kind='EXT' AND status='APPROVED';"
+h15 "구 1~5 가 빠짐없이 있다" 5 "SELECT COUNT(DISTINCT verse_no) FROM manuscript WHERE site_id IS NULL AND kind='MISSION' AND status='APPROVED';"
+h15 "기본 원고가 구·종류마다 두 편 이상인 곳" 0 "SELECT COUNT(*) FROM (SELECT verse_no, kind FROM manuscript WHERE site_key=0 AND status='APPROVED' GROUP BY verse_no, kind HAVING COUNT(*)>1) x;"
+h15 "manuscript 표" 1 "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='manuscript';"
+h15 "site_key 생성 컬럼" 1 "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='manuscript' AND COLUMN_NAME='site_key' AND EXTRA LIKE '%GENERATED%';"
+h15 "변형 유니크 uk_manuscript_variant" 1 "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DB' AND INDEX_NAME='uk_manuscript_variant' AND SEQ_IN_INDEX=1;"
+h15 "stamp 의 원고 두 칸" 2 "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='stamp' AND COLUMN_NAME IN ('manuscript_id','ext_manuscript_id');"
+h15 "users 역할에 EDITOR" 1 "SELECT COUNT(*) FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB' AND CONSTRAINT_NAME='chk_users_role' AND CHECK_CLAUSE LIKE '%EDITOR%';"
+h15 "편집자 계정" 1 "SELECT COUNT(*) FROM users WHERE role='EDITOR' AND status <> 'DELETED';"
+say "  → 어긋남 $H15_BAD"
+
+say ""
+say "── H16  챕터 9 표·제약 정합 ─────────────────────────────────────"
+say "기대: ebook 의 스냅샷 세 칸과 유니크 · print_order 의 상태 여섯 · 배송정보 별도 표 ·"
+say "     storage_orphan 의 큐 네 칸. schema.sql 과 실제 DB 가 같은지 정보 스키마로 대조한다."
+H16_BAD=0
+h16() {  # $1=설명  $2=기대값  $3=SQL
+  local n
+  n=$(qn "$3")
+  if [ "${n:-x}" = "$2" ]; then say "  ✅ $1 ($n)"; else say "  ❌ $1 — 기대 $2, 실제 ${n:-없음}"; H16_BAD=$((H16_BAD + 1)); fi
+}
+h16 "ebook.snapshot_hash·page_count·byte_size" 3 "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='ebook' AND COLUMN_NAME IN ('snapshot_hash','page_count','byte_size');"
+h16 "uk_ebook_user_snapshot" 1 "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DB' AND INDEX_NAME='uk_ebook_user_snapshot' AND SEQ_IN_INDEX=1;"
+h16 "ebook 상태에서 BUILDING 이 빠졌다" 0 "SELECT COUNT(*) FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB' AND CONSTRAINT_NAME='chk_ebook_status' AND CHECK_CLAUSE LIKE '%BUILDING%';"
+h16 "ebook 상태에 REQUESTED 가 있다" 1 "SELECT COUNT(*) FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB' AND CONSTRAINT_NAME='chk_ebook_status' AND CHECK_CLAUSE LIKE '%REQUESTED%';"
+h16 "ebook_type 에 PERSONAL" 1 "SELECT COUNT(*) FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB' AND CONSTRAINT_NAME='chk_ebook_type' AND CHECK_CLAUSE LIKE '%PERSONAL%';"
+h16 "print_order 상태에 PRINTING·DONE" 1 "SELECT COUNT(*) FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB' AND CONSTRAINT_NAME='chk_print_order_status' AND CHECK_CLAUSE LIKE '%PRINTING%' AND CHECK_CLAUSE LIKE '%DONE%';"
+h16 "print_order.cancel_reason·needs_review" 2 "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='print_order' AND COLUMN_NAME IN ('cancel_reason','needs_review');"
+h16 "print_order 에서 주소 다섯 칸이 빠졌다" 0 "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='print_order' AND COLUMN_NAME IN ('recipient_name','recipient_phone','postal_code','address','address_detail');"
+h16 "print_order_address 표" 1 "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='print_order_address';"
+h16 "print_order_address 는 주문이 사라지면 함께 사라진다(CASCADE)" 1 "SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB' AND CONSTRAINT_NAME='fk_print_order_address_order' AND DELETE_RULE='CASCADE';"
+h16 "storage_orphan 의 큐 네 칸" 4 "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB' AND TABLE_NAME='storage_orphan' AND COLUMN_NAME IN ('status','retry_count','needs_review','last_error');"
+h16 "수량 상한 5" 1 "SELECT COUNT(*) FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB' AND CONSTRAINT_NAME='chk_print_order_qty' AND CHECK_CLAUSE LIKE '%5%';"
+say "  → 어긋남 $H16_BAD"
+
+say ""
+say "── H17  ALTER 사슬 ↔ schema.sql (챕터 9 보강) ────────────────────"
+say "기대: 임시 스키마 둘을 세워 전수 비교했을 때 차이 0."
+say "     ① 사슬 — 챕터 7 이전 schema.sql + alter-ch7 → ch1-withdraw → ch8 → ch9 (운영이 올라가는 길)"
+say "     ② 새것 — 지금 schema.sql 하나 (새 환경이 세워지는 길)"
+say "     이 둘이 갈리면 <b>운영에서만</b> 표·색인이 다르다. 최종 점검 F 가 색인 하나를,"
+say "     이 검사가 표 하나(cert_serial)를 이렇게 찾았다 — 둘 다 기동도 로그도 조용한 종류다."
+H17_A=${H17_A:-temple_stamp_h17_chain}
+H17_B=${H17_B:-temple_stamp_h17_fresh}
+H17_BASE=../audit/ch7-replaced/schema.sql   # 챕터 7 이전의 schema.sql — 사슬의 출발점
+H17_BAD=0
+
+if [ ! -f "$H17_BASE" ]; then
+  say "  ➖ 사슬의 출발점($H17_BASE)이 없다 — 이 실행은 H17 을 통과로 셀 수 없다"
+else
+  # ★ 두 스키마를 같은 문자셋으로 올린다. 클라이언트 문자셋이 다르면 CHECK 절의 문자열 리터럴에
+  #   _euckr / _utf8mb4 가 각각 찍혀 26건이 다르다고 나온다 — 실제로는 같은 제약이다.
+  #   처음 돌렸을 때 이것으로 헛것을 봤다. 도구부터 의심하라는 자리가 여기다.
+  m() { "$MYSQL" -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 "$@" 2>/dev/null; }
+  m -e "DROP DATABASE IF EXISTS $H17_A; DROP DATABASE IF EXISTS $H17_B;
+        CREATE DATABASE $H17_A DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        CREATE DATABASE $H17_B DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+  m -D "$H17_A" < "$H17_BASE" > /dev/null
+  for F in alter-ch7 alter-ch1-withdraw alter-ch8 alter-ch9 alter-ch10; do
+    if ! m -D "$H17_A" < "$F.sql" > /dev/null; then
+      say "  ❌ $F.sql 이 사슬 위에서 실패했다 — 운영에서도 같은 자리에서 멈춘다"
+      H17_BAD=$((H17_BAD + 1))
+    fi
+  done
+  m -D "$H17_B" < ../../../src/main/resources/db/schema.sql > /dev/null
+
+  H17_OUT=$(DB_USER="$DB_USER" DB_PASS="$DB_PASS" MYSQL_BIN="$MYSQL" node schema-diff.js "$H17_A" "$H17_B")
+  H17_RC=$?
+  echo "$H17_OUT" | tee -a "$OUT"
+  if [ "$H17_RC" -ne 0 ]; then
+    say "  ❌ 사슬과 schema.sql 이 갈렸다 — 위 목록의 차이를 ALTER 파일에 반영할 것"
+    H17_BAD=$((H17_BAD + 1))
+  else
+    say "  ✅ 차이 0 — 운영이 올라가는 길과 새로 세우는 길이 같은 스키마에 닿는다"
+  fi
+  m -e "DROP DATABASE IF EXISTS $H17_A; DROP DATABASE IF EXISTS $H17_B;"
+fi
+say "  → 어긋남 $H17_BAD"
+say ""
+say "── H18  청소기가 몇 건을 처리했는가 (최종 점검 F) ────────────────"
+say "기대: 대상이 있으면 그만큼 처리된다. <b>돌았는가가 아니라 몇 건을 했는가</b>를 본다 —"
+say "     챕터 9 에서 '하루 한 번 도는데 한 번도 지운 적이 없는' 정리 작업이 나왔기 때문이다."
+say "     대상을 넷 다 만들어 두고 한 바퀴 돌린 뒤, 대상 수와 처리 수를 맞춰 본다."
+H18_BAD=0
+h18() {  # 1=설명  2=기대  3=실제
+  if [ "${3:-x}" = "$2" ]; then say "  ✅ $1 (대상 $2 · 처리 $3)"; else say "  ❌ $1 — 대상 $2, 처리 ${3:-없음}"; H18_BAD=$((H18_BAD + 1)); fi
+}
+
+# ① 지울 파일 키 셋 — 저장소에 없는 키도 성공으로 세어야 한다(챕터 9 §5).
+for I in 1 2 3; do
+  qn "INSERT INTO storage_orphan (file_key, reason) VALUES ('H18/probe-$I.bin', 'USER_WITHDRAWN');" > /dev/null
+done
+# ② 만료+24h 를 넘긴 토큰 둘, 그리고 지우면 안 되는 것 하나(폐기됐지만 미만료)
+H18_USER=$(qn "SELECT user_id FROM users WHERE status = 'ACTIVE' ORDER BY user_id LIMIT 1;")
+for I in 1 2; do
+  qn "INSERT INTO refresh_token (user_id, token_hash, expires_at, revoked_at) VALUES ($H18_USER, 'h18-old-$I', NOW() - INTERVAL 30 HOUR, NULL);" > /dev/null
+done
+qn "INSERT INTO refresh_token (user_id, token_hash, expires_at, revoked_at) VALUES ($H18_USER, 'h18-keep', NOW() + INTERVAL 10 DAY, NOW());" > /dev/null
+
+# 큐 전체가 아니라 <b>이 검사가 넣은 것</b>만 센다. 큐에는 다른 검사가 남긴 행이 섞일 수 있고,
+# 그러면 "대상 수" 가 실행 순서에 따라 흔들려 판정이 못 믿을 것이 된다.
+# 큐 전체의 잔량과 FAILED 는 H10 이 따로 본다.
+ORPHAN_TARGET=$(qn "SELECT COUNT(*) FROM storage_orphan WHERE status = 'PENDING' AND file_key LIKE 'H18/%';")
+TOKEN_TARGET=$(qn "SELECT COUNT(*) FROM refresh_token WHERE expires_at < NOW() - INTERVAL 24 HOUR;")
+EBOOK_TARGET=$(qn "SELECT COUNT(*) FROM ebook WHERE status = 'REQUESTED';")
+SESSION_TARGET=$(qn "SELECT COUNT(*) FROM stamp WHERE verify_status IN ('GPS_DONE','QR_DONE') AND gps_verified_at < NOW() - INTERVAL 60 MINUTE;")
+
+# 관리자로 청소기를 한 바퀴 돌린다. 5분을 기다리지 않고 같은 코드를 부르는 문이 있다(챕터 9 §5).
+H18_ADM=$(curl -s -X POST "$BASE/api/auth/login" -H "Content-Type: application/json" \
+  --data-binary @body/admin-login.json \
+  | node -e "let d=String();process.stdin.on(String.fromCharCode(100,97,116,97),c=>d+=c).on(String.fromCharCode(101,110,100),()=>{try{console.log(JSON.parse(d).data.accessToken)}catch(e){console.log(String())}})")
+H18_RUN=$(curl -s -X POST "$BASE/api/admin/housekeeping/run" -H "Authorization: Bearer $H18_ADM")
+say "  청소기 응답: $H18_RUN"
+pick() { printf "%s" "$H18_RUN" | node -e "let d=String();process.stdin.on(String.fromCharCode(100,97,116,97),c=>d+=c).on(String.fromCharCode(101,110,100),()=>{try{console.log(JSON.parse(d).data[process.argv[1]])}catch(e){console.log(String())}})" "$1"; }
+
+# 처리 수도 이 검사의 몫만 센다 — 청소기 응답의 orphanDeleted 는 한 바퀴 전체의 수다.
+ORPHAN_DONE=$(qn "SELECT COUNT(*) FROM storage_orphan WHERE status = 'DELETED' AND file_key LIKE 'H18/%';")
+h18 "파일 삭제 큐" "$ORPHAN_TARGET" "$ORPHAN_DONE"
+say "  · 한 바퀴 전체 처리 수(참고): 삭제 $(pick orphanDeleted) · 실패 $(pick orphanFailed)"
+h18 "만료 토큰" "$TOKEN_TARGET" "$(pick tokenDeleted)"
+h18 "전자책 조판" "$EBOOK_TARGET" "$(pick ebookReady)"
+h18 "도장 세션 만료" "$SESSION_TARGET" "$(pick sessionExpired)"
+
+# 지우면 안 되는 쪽이 살아 있는지도 함께 본다 — 0 만 세면 "전부 지웠다" 를 통과로 읽는다.
+H18_KEPT=$(qn "SELECT COUNT(*) FROM refresh_token WHERE token_hash = 'h18-keep';")
+h18 "폐기됐지만 미만료라 남겨야 하는 토큰" "1" "$H18_KEPT"
+qn "DELETE FROM refresh_token WHERE token_hash LIKE 'h18-%';" > /dev/null
+qn "DELETE FROM storage_orphan WHERE file_key LIKE 'H18/%';" > /dev/null
+say "  → 어긋남 $H18_BAD"
+say ""
+say "── H10  청소기가 지나간 뒤의 잔량 (챕터 9) ──────────────────────"
+say "기대: storage_orphan 에 FAILED 0 · refresh_token 에 만료+24h 넘긴 행 0."
+say "     둘 다 '큐에 쌓이는 것' 이라, 0 이 아니면 청소기가 안 돌았거나 지우지 못하고 있다는 뜻이다."
+say "     폐기됐지만 아직 만료 전인 토큰은 <b>남아 있어야</b> 한다 — 재사용 탐지가 그 행을 본다(S18)."
+H10_BAD=0
+h10() {  # $1=설명  $2=기대값  $3=SQL
+  local n
+  n=$(qn "$3")
+  if [ "${n:-x}" = "$2" ]; then say "  ✅ $1 ($n)"; else say "  ❌ $1 — 기대 $2, 실제 ${n:-없음}"; H10_BAD=$((H10_BAD + 1)); fi
+}
+h10 "storage_orphan FAILED" 0 "SELECT COUNT(*) FROM storage_orphan WHERE status = 'FAILED';"
+h10 "refresh_token 만료+24h 초과" 0 "SELECT COUNT(*) FROM refresh_token WHERE expires_at < NOW() - INTERVAL 24 HOUR;"
+# 남아 있어야 하는 쪽도 함께 센다 — 0 이어야 하는 것만 보면 "전부 지웠다" 를 통과로 읽는다.
+KEPT=$(qn "SELECT COUNT(*) FROM refresh_token WHERE revoked_at IS NOT NULL AND expires_at >= NOW();")
+say "  · 폐기됐지만 아직 만료 전이라 남겨 둔 토큰: ${KEPT:-?} (지우면 안 되는 쪽)"
+ORPHAN_LEFT=$(qn "SELECT COUNT(*) FROM storage_orphan WHERE deleted_at IS NULL;")
+say "  · 아직 지우지 못한 파일 키: ${ORPHAN_LEFT:-?} (다음 실행에서 소비된다)"
+say "  → 어긋남 $H10_BAD"
+
+say ""
+say "── H11  챕터 6 표 정합 ──────────────────────────────────────────"
+say "기대: 아래 셋이 전부 0. photo 와 thinkbox DIRECT 는 같은 (사용자, 사찰) 을 가리켜야 한다."
+run "" q "SELECT
+  (SELECT COUNT(*) FROM photo p LEFT JOIN site s ON s.site_id = p.site_id WHERE s.site_id IS NULL)            AS photo_site_orphan,
+  (SELECT COUNT(*) FROM thinkbox t LEFT JOIN site s ON s.site_id = t.site_id
+    WHERE t.site_id IS NOT NULL AND s.site_id IS NULL)                                                        AS thinkbox_site_orphan,
+  (SELECT COUNT(*) FROM meditation_log ml LEFT JOIN meditation m ON m.meditation_id = ml.meditation_id
+    WHERE m.meditation_id IS NULL)                                                                            AS medlog_orphan;"
+run "사찰별 DIRECT 문장이 둘 이상인 경우(0행이어야 한다):" q "SELECT user_id, site_id, COUNT(*) AS n FROM thinkbox
+  WHERE source = \"DIRECT\" AND site_id IS NOT NULL GROUP BY user_id, site_id HAVING COUNT(*) > 1;"
+
+say ""
+H12_SKIPPED=0
+say "── H12  유니크 제약 실측 ────────────────────────────────────────"
+say "기대: 셋 다 중복 INSERT 가 오류로 막힌다. 정의만 보지 않고 실제로 넣어 본다."
+# $1=라벨  $2=중복 INSERT SQL  $3=원본이 있는지 세는 SQL  $4=제약 이름
+#
+# 복제할 원본이 없으면 INSERT ... SELECT 는 0행을 넣고 조용히 성공한다.
+# 그것을 "중복이 통과했다" 로 읽으면 정리 직후에는 늘 ❌ 가 뜬다 — 검사가 아니라 착시다.
+# 그래서 원본 수를 먼저 세고, 없으면 정의만 확인했다고 분명히 적는다.
+uniq() {
+  local out rows defined
+  rows=$(qn "$3")
+  if [ "${rows:-0}" = "0" ]; then
+    defined=$(qn "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = '$DB' AND INDEX_NAME = '$4' AND NON_UNIQUE = 0;")
+    if [ "${defined:-0}" -gt 0 ]; then
+      say "  ➖ $1 — 복제할 행이 없어 실측은 건너뛰고 제약 정의만 확인했다(있음)"
+      H12_SKIPPED=$((H12_SKIPPED + 1))
+    else
+      say "  ❌ $1 — 제약 자체가 없다"
+    fi
+    return
+  fi
+  out=$("$MYSQL" -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 -e "USE $DB; $2" 2>&1 \
+        | grep -iE 'duplicate|ERROR' | head -1)
+  if [ -n "$out" ]; then
+    say "  ✅ $1 — 막혔다: ${out:0:120}"
+  else
+    say "  ❌ $1 — 중복이 들어갔다"
+  fi
+}
+uniq "photo(user_id, site_id)" \
+  "INSERT INTO photo (user_id, site_id, file_key, has_other_face, is_private)
+   SELECT user_id, site_id, CONCAT(file_key,'x'), 0, 0 FROM photo LIMIT 1;" \
+  "SELECT COUNT(*) FROM photo;" "uk_photo_user_site"
+uniq "site(seed_key)" \
+  "INSERT INTO site (name, latitude, longitude, verify_radius, seed_key)
+   SELECT CONCAT(name,'-dup'), latitude, longitude, verify_radius, seed_key
+   FROM site WHERE seed_key IS NOT NULL LIMIT 1;" \
+  "SELECT COUNT(*) FROM site WHERE seed_key IS NOT NULL;" "uk_site_seed_key"
+uniq "stamp(pilgrimage_id, completed_course_site_id)" \
+  "INSERT INTO stamp (pilgrimage_id, course_site_id, verify_status, verify_method, mission_verified_at)
+   SELECT pilgrimage_id, course_site_id, 'COMPLETED', 'GPS_QR', NOW()
+   FROM stamp WHERE verify_status = 'COMPLETED' LIMIT 1;" \
+  "SELECT COUNT(*) FROM stamp WHERE verify_status = 'COMPLETED';" "uk_stamp_completed"
+if [ "$H12_SKIPPED" -gt 0 ]; then
+  say "  ⚠ H12 는 $H12_SKIPPED 항목을 실측하지 못했다 — 이 실행은 H12 를 '통과' 로 셀 수 없다."
+  say "     정리(cleanup) 전에, 즉 newman 직후에 다시 돌릴 것."
+fi
+say "  (혹시 들어갔다면 흔적을 지운다)"
+"$MYSQL" -u"$DB_USER" -p"$DB_PASS" --default-character-set=utf8mb4 \
+  -e "USE $DB; DELETE FROM site WHERE name LIKE '%-dup';" 2>/dev/null
+
+say ""
+say "── H2  커넥션 누수 (newman 후) ───────────────────────────────────"
+say "기대: 전(前) 값과의 차이가 HikariCP 풀 크기(기본 10) 이내."
+run "" q "SHOW STATUS LIKE 'Threads_connected';"
+run "풀이 붙어 있는 접속:" q "SELECT COUNT(*) AS app_conns FROM information_schema.PROCESSLIST WHERE db = '$DB';"
+
+say ""
+say "── H4  트랜잭션 잔류 ────────────────────────────────────────────"
+say "기대: 0행. 남아 있으면 어딘가 커밋도 롤백도 안 하고 붙잡고 있는 것이다."
+run "" q "SELECT COUNT(*) AS open_trx FROM information_schema.INNODB_TRX;"
+run "(있으면 상세)" q "SELECT trx_id, trx_state, trx_started, trx_query FROM information_schema.INNODB_TRX;"
+
+say ""
+say "── H5  잠금 대기·교착 ───────────────────────────────────────────"
+say "기대: <b>이번 실행 이후</b>에 난 교착 기록이 없어야 한다."
+say "     InnoDB 의 LATEST DETECTED DEADLOCK 은 가장 최근 하나만 남는다 — 고치기 전의 기록이"
+say "     서버를 다시 켤 때까지 그대로 떠 있다. 그래서 있음/없음이 아니라 <b>시각</b>으로 판정한다."
+say "     기준 시각(실행 시작): $RUN_STARTED_AT"
+DEADLOCK=$("$MYSQL" -u"$DB_USER" -p"$DB_PASS" -e "SHOW ENGINE INNODB STATUS\G" 2>/dev/null \
+  | sed -n '/LATEST DETECTED DEADLOCK/,/^TRANSACTIONS/p' | head -40)
+if [ -z "$DEADLOCK" ]; then
+  say "  교착 기록 없음 ✅"
+else
+  # 제목 다음 줄이 "2026-09-07 00:12:34 0x21cc" 꼴이다. 앞 19글자가 시각이다.
+  DL_AT=$(echo "$DEADLOCK" | sed -n '3p' | cut -c1-19)
+  if [ -z "$DL_AT" ]; then
+    say "  ⚠ 교착 기록은 있는데 시각을 읽지 못했다 — 아래 원문을 사람이 볼 것"
+    echo "$DEADLOCK" | tee -a "$OUT"
+  elif [ "$DL_AT" \> "$RUN_STARTED_AT" ]; then
+    say "  ❌ 이번 실행 중에 교착이 났다 ($DL_AT > $RUN_STARTED_AT)"
+    echo "$DEADLOCK" | tee -a "$OUT"
+  else
+    say "  ✅ 이번 실행 이후 교착 없음 — 남아 있는 기록은 $DL_AT 의 옛것이다(기준 $RUN_STARTED_AT)"
+    say "     참고용 원문:"
+    echo "$DEADLOCK" | head -6 | tee -a "$OUT"
+  fi
+fi
+run "현재 잠금 대기:" q "SELECT COUNT(*) AS lock_waits FROM performance_schema.data_lock_waits;"
+
+fi
+
+say ""
+say "=================================================================="
+say " 끝 — $(date '+%Y-%m-%d %H:%M:%S')   결과 파일: docs/verify/$OUT"
+say "=================================================================="

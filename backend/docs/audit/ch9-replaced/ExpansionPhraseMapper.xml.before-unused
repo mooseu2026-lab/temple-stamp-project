@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.verse.ExpansionPhraseMapper">
+
+    <!-- [RULE] 관리자 저장은 UPSERT 만. 삭제 후 재삽입 금지 — 조합이 잠깐 비면 SITE-5001 -->
+    <!--        아래 upsert 가 ON DUPLICATE KEY UPDATE 다. 현행 유지이며 DELETE 문을 추가하지 않는다. -->
+
+    <sql id="columns">
+        expansion_phrase_id, verse_no, tier, version_no, text_ko, review_status
+    </sql>
+
+    <!--
+      (구절, 대상) 조합의 다섯 버전 중 이 코스에서 아직 안 본 것을 고른다.
+      검수를 마친 문구를 먼저 주고, 같은 등급 안에서는 무작위로 뽑아 사람마다 다른 문구가 나오게 한다.
+    -->
+    <select id="findUnseen" resultType="com.templestamp.verse.ExpansionPhrase">
+        SELECT <include refid="columns"/>
+        FROM expansion_phrase p
+        WHERE p.verse_no = #{verseNo}
+          AND p.tier = #{tier}
+          AND NOT EXISTS (SELECT 1
+                          FROM phrase_seen ps
+                          WHERE ps.user_id = #{userId}
+                            AND ps.course_id = #{courseId}
+                            AND ps.expansion_phrase_id = p.expansion_phrase_id)
+        ORDER BY (p.review_status = 'REVIEWED') DESC, RAND()
+        LIMIT 1
+    </select>
+
+    <select id="findLeastRecentlySeen" resultType="com.templestamp.verse.ExpansionPhrase">
+        SELECT p.expansion_phrase_id, p.verse_no, p.tier, p.version_no, p.text_ko, p.review_status
+        FROM expansion_phrase p
+                 JOIN phrase_seen ps ON ps.expansion_phrase_id = p.expansion_phrase_id
+                                     AND ps.user_id = #{userId}
+                                     AND ps.course_id = #{courseId}
+        WHERE p.verse_no = #{verseNo}
+          AND p.tier = #{tier}
+        ORDER BY ps.seen_at
+        LIMIT 1
+    </select>
+
+    <select id="findById" resultType="com.templestamp.verse.ExpansionPhrase">
+        SELECT <include refid="columns"/>
+        FROM expansion_phrase
+        WHERE expansion_phrase_id = #{expansionPhraseId}
+    </select>
+
+    <insert id="upsert" parameterType="com.templestamp.verse.ExpansionPhrase"
+            useGeneratedKeys="true" keyProperty="expansionPhraseId">
+        INSERT INTO expansion_phrase (verse_no, tier, version_no, text_ko, review_status)
+        VALUES (#{verseNo}, #{tier}, #{versionNo}, #{textKo}, #{reviewStatus})
+        ON DUPLICATE KEY UPDATE
+            text_ko       = VALUES(text_ko),
+            review_status = VALUES(review_status)
+    </insert>
+
+    <!-- 비어 있는 다음 번호. COALESCE 로 첫 등록도 1 이 되게 한다. -->
+    <select id="nextVersionNo" resultType="int">
+        SELECT COALESCE(MAX(version_no), 0) + 1
+        FROM expansion_phrase
+        WHERE verse_no = #{verseNo} AND tier = #{tier}
+    </select>
+
+    <!-- 자기 계층이 아닌 문구를 "읽었다" 로 만들 수 없게 한다. target 은 대상 계층 컬럼이다. -->
+    <select id="existsForVerseAndTier" resultType="boolean">
+        SELECT COUNT(*) > 0 FROM expansion_phrase
+        WHERE expansion_phrase_id = #{expansionPhraseId}
+          AND verse_no = #{verseNo}
+          AND tier = #{tier}
+    </select>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM expansion_phrase
+    </select>
+
+    <select id="countReviewed" resultType="int">
+        SELECT COUNT(*) FROM expansion_phrase WHERE review_status = 'REVIEWED'
+    </select>
+
+</mapper>

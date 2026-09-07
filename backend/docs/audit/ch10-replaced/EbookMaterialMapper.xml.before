@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.ebook.EbookMaterialMapper">
+
+    <!--
+      도장 페이지의 재료. 사찰 이름은 실제로 인증한 후보 사찰(stamp.site_id)에서 가져온다 —
+      자리의 대표 사찰이 아니다(v4). 확장문구는 stamp.ext_manuscript_id 를 따라가므로
+      그 원고가 나중에 퇴역·수정돼도 이 책에 실리는 글은 그날 그대로다(챕터 8 §3-2).
+      사진은 (사용자, 사찰) 한 장이라 photo 로 조인한다.
+    -->
+    <select id="findStamps" resultType="com.templestamp.ebook.dto.EbookStampRow">
+        SELECT s.stamp_id            AS stampId,
+               c.course_id           AS courseId,
+               c.name                AS courseName,
+               r.name                AS regionName,
+               si.name               AS siteName,
+               s.mission_verified_at AS completedAt,
+               s.user_sentence       AS userSentence,
+               COALESCE(s.photo_key, ph.file_key) AS photoKey,
+               s.ext_manuscript_id   AS extManuscriptId,
+               m.title               AS extTitle,
+               m.body                AS extBody
+          FROM stamp s
+          JOIN pilgrimage p  ON p.pilgrimage_id = s.pilgrimage_id
+          JOIN course c      ON c.course_id = p.course_id
+          JOIN region r      ON r.region_id = c.region_id
+          LEFT JOIN site si  ON si.site_id = s.site_id
+          LEFT JOIN manuscript m ON m.manuscript_id = s.ext_manuscript_id
+          LEFT JOIN photo ph ON ph.user_id = p.user_id AND ph.site_id = s.site_id
+         WHERE p.user_id = #{userId}
+           AND s.verify_status = 'COMPLETED'
+         ORDER BY s.mission_verified_at, s.stamp_id
+    </select>
+
+    <select id="findThinkboxes" resultType="com.templestamp.ebook.dto.EbookThinkboxRow">
+        SELECT t.thinkbox_id AS thinkboxId,
+               si.name       AS siteName,
+               t.body        AS content,
+               t.is_private  AS isPrivate,
+               t.is_edited   AS edited,
+               t.created_at  AS createdAt
+          FROM thinkbox t
+          LEFT JOIN site si ON si.site_id = t.site_id
+         WHERE t.user_id = #{userId}
+         ORDER BY t.created_at, t.thinkbox_id
+    </select>
+
+    <select id="findValidCerts" resultType="com.templestamp.ebook.dto.EbookCertRow">
+        SELECT ct.serial_no AS serialNo,
+               ct.cert_type AS certType,
+               c.name       AS courseName,
+               ct.issued_at AS issuedAt
+          FROM certificate ct
+          LEFT JOIN pilgrimage p ON p.pilgrimage_id = ct.pilgrimage_id
+          LEFT JOIN course c     ON c.course_id = p.course_id
+         WHERE ct.user_id = #{userId}
+           AND ct.status = 'VALID'
+         ORDER BY ct.issued_at, ct.certificate_id
+    </select>
+
+    <select id="countMeditationLogs" resultType="int">
+        SELECT COUNT(*) FROM meditation_log WHERE user_id = #{userId}
+    </select>
+
+    <select id="sumMeditationSeconds" resultType="long">
+        SELECT COALESCE(SUM(played_sec), 0) FROM meditation_log WHERE user_id = #{userId}
+    </select>
+
+    <select id="findNickname" resultType="string">
+        SELECT nickname FROM users WHERE user_id = #{userId}
+    </select>
+
+</mapper>

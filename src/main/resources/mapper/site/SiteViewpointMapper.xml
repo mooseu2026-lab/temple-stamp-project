@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.site.SiteViewpointMapper">
+
+    <select id="findBySiteId" resultType="com.templestamp.site.SiteViewpoint">
+        SELECT site_viewpoint_id, site_id, sort_no, location_desc, best_time, what_to_see
+        FROM site_viewpoint
+        WHERE site_id = #{siteId}
+        ORDER BY sort_no
+    </select>
+
+
+    <!-- [RULE] 삭제 후 재삽입 금지. uk_site_viewpoint(site_id, sort_no) 가 갱신 기준 -->
+    <insert id="upsert">
+        INSERT INTO site_viewpoint (site_id, sort_no, location_desc, best_time, what_to_see)
+        VALUES (#{siteId}, #{sortNo}, #{locationDesc}, #{bestTime}, #{whatToSee})
+        ON DUPLICATE KEY UPDATE
+            location_desc = VALUES(location_desc),
+            best_time     = VALUES(best_time),
+            what_to_see   = VALUES(what_to_see)
+    </insert>
+
+</mapper>

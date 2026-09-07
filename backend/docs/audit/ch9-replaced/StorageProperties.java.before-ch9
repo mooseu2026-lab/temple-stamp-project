@@ -1,0 +1,18 @@
+package com.templestamp.global.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+/**
+ * storage.* — 오브젝트 스토리지.
+ * 서버는 파일 바이트를 통과시키지 않고 presigned URL 만 발급한다.
+ */
+@ConfigurationProperties(prefix = "storage")
+public record StorageProperties(
+        String provider,
+        String bucket,
+        String endpoint,
+        String secretKey,
+        long presignSeconds,
+        long maxUploadBytes
+) {
+}

@@ -1,0 +1,33 @@
+package com.templestamp.ebook;
+
+import com.templestamp.ebook.dto.PrintOrderRow;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
+import java.util.Optional;
+
+@Mapper
+public interface PrintOrderMapper {
+
+    int save(PrintOrder printOrder);
+
+    Optional<PrintOrder> findById(@Param("printOrderId") Long printOrderId);
+
+    Optional<PrintOrderRow> findRowById(@Param("printOrderId") Long printOrderId);
+
+    List<PrintOrderRow> findRowsByUserId(@Param("userId") Long userId);
+
+    /** 취소되지 않은 신청이 이미 있는가. 같은 책을 두 번 찍지 않기 위해. */
+    int existsActive(@Param("userId") Long userId, @Param("ebookId") Long ebookId);
+
+    List<PrintOrderRow> findRowsForAdmin(@Param("status") String status,
+                                         @Param("offset") int offset,
+                                         @Param("limit") int limit);
+
+    long countForAdmin(@Param("status") String status);
+
+    int updateStatus(@Param("printOrderId") Long printOrderId,
+                     @Param("status") String status,
+                     @Param("trackingNo") String trackingNo);
+}

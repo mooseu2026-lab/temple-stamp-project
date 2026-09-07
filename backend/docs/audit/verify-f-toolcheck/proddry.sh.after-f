@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# 최종 점검 F §3-3 — prod 프로파일 드라이런 열 항목을 실측한다.
+# 로컬에서 prod 프로파일로 띄운 뒤, "배포에서만 드러나는 것" 을 하나씩 두드린다.
+cd /c/temple-stamp-project
+BASE=http://localhost:8080
+LOG="$1"
+PASS=0; FAIL=0
+ok()  { echo "  ✅ $1"; PASS=$((PASS+1)); }
+ng()  { echo "  ❌ $1"; FAIL=$((FAIL+1)); }
+chk() { if [ "$1" = "$2" ]; then ok "$3 ($1)"; else ng "$3 — 기대 '$2' 실제 '$1'"; fi; }
+
+echo "=================================================================="
+echo " prod 프로파일 드라이런 — $(date '+%Y-%m-%d %H:%M:%S')"
+echo "=================================================================="
+
+echo ""
+echo "① 시크릿 — env 에서만 읽힌다"
+BAD=$(grep -rInE "^[[:space:]]*(secret|secret-key|password|rest-key):[[:space:]]*[^\$[:space:]]" \
+  src/main/resources/application.yml src/main/resources/application-prod.yml 2>/dev/null | wc -l)
+chk "$BAD" "0" "yml 에 값으로 박힌 시크릿"
+PROFILE=$(grep -c 'profile is active: "prod"' "$LOG")
+chk "$PROFILE" "1" "prod 프로파일로 떴다"
+
+echo ""
+echo "② DDL — 기동이 스키마를 건드리지 않는다"
+INIT=$(grep -c "schema.sql\|data.sql" "$LOG")
+chk "$INIT" "0" "sql.init 이 돌지 않았다(never)"
+SEED=$(grep -c "SEED DONE" "$LOG")
+chk "$SEED" "0" "시더가 돌지 않았다(seed 프로파일 없이는)"
+
+echo ""
+echo "③ 로그 — 레벨과 SQL"
+SQLLOG=$(grep -cE "==>  Preparing:|==> Parameters:" "$LOG")
+chk "$SQLLOG" "0" "SQL 로그가 꺼져 있다"
+DEBUG=$(grep -c " DEBUG " "$LOG")
+chk "$DEBUG" "0" "DEBUG 로그가 없다"
+PWLOG=$(grep -cE "password=[^&\"]|JWT_SECRET=|secret=[A-Za-z0-9+/]{10}" "$LOG")
+chk "$PWLOG" "0" "로그에 비밀값이 찍히지 않았다"
+
+echo ""
+echo "④ actuator — /health 만 열린다"
+chk "$(curl -s -o /dev/null -w '%{http_code}' $BASE/health)" "200" "/health"
+for P in /env /beans /metrics /actuator /actuator/health /actuator/env /configprops /loggers; do
+  C=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$P")
+  if [ "$C" = "200" ]; then ng "$P 가 열려 있다 ($C)"; else ok "$P 닫힘 ($C)"; fi
+done
+
+echo ""
+echo "⑤ CORS — 운영 도메인만"
+ALLOWED=$(curl -s -o /dev/null -D - -X OPTIONS "$BASE/api/regions" \
+  -H "Origin: https://app.temple-stamp.example.com" \
+  -H "Access-Control-Request-Method: GET" 2>/dev/null | grep -ci "access-control-allow-origin")
+chk "$ALLOWED" "1" "허용 도메인의 preflight 가 통과"
+DENIED=$(curl -s -o /dev/null -D - -X OPTIONS "$BASE/api/regions" \
+  -H "Origin: https://evil.example.com" \
+  -H "Access-Control-Request-Method: GET" 2>/dev/null | grep -ci "access-control-allow-origin")
+chk "$DENIED" "0" "그 밖의 도메인은 허용 헤더가 없다"
+
+echo ""
+echo "⑥ 에러 — 스택트레이스가 응답에 없다"
+BODY=$(curl -s "$BASE/api/courses/999999")
+if echo "$BODY" | grep -qE "com\.templestamp|at java\.|Exception|trace"; then
+  ng "응답에 내부 정보가 실린다"
+else ok "404 응답에 내부 정보 없음"; fi
+BODY2=$(curl -s "$BASE/api/verses/6")
+if echo "$BODY2" | grep -qE "com\.templestamp|at java\."; then ng "검증 오류 응답에 내부 정보"; else ok "검증 오류 응답도 깨끗"; fi
+
+echo ""
+echo "⑦ 시간대"
+TZ_JVM=$(curl -s "$BASE/health" > /dev/null; grep -oE "\+09:00" <(curl -s "$BASE/api/regions") | head -1)
+chk "${TZ_JVM:-없음}" "+09:00" "응답 timestamp 가 +09:00"
+
+echo ""
+echo "⑧ 청소기 — 스케줄 등록"
+# 첫 줄은 기동 1분 뒤에 나온다. 없으면 그때까지 기다린다 — "등록됐는가" 를 보는 자리다.
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do grep -q "housekeeping" "$LOG" && break; sleep 10; done
+SCHED=$(grep -c "housekeeping" "$LOG")
+if [ "$SCHED" -ge 1 ]; then ok "청소기 로그가 남는다 ($SCHED줄)"; else ng "청소기 로그가 없다 — 5분을 기다려야 첫 줄이 나온다"; fi
+
+echo ""
+echo "⑨ 파일 상한"
+MAXF=$(grep -E "^      max-file-size:" src/main/resources/application.yml | head -1 | awk '{print $2}')
+MAXR=$(grep -E "^      max-request-size:" src/main/resources/application.yml | head -1 | awk '{print $2}')
+echo "  · multipart max-file-size=$MAXF · max-request-size=$MAXR"
+CSVMAX=$(grep -E "import-max-bytes:" src/main/resources/application.yml | awk '{print $2}')
+echo "  · CSV 반입 상한=$CSVMAX bytes (원고 CSV 는 서비스가 따로 본다)"
+if [ -n "$MAXF" ] && [ -n "$CSVMAX" ]; then ok "상한이 설정으로 잡혀 있다"; else ng "상한 설정을 찾지 못했다"; fi
+
+echo ""
+echo "⑩ 기동 로그"
+chk "$(grep -c ' ERROR ' "$LOG")" "0" "ERROR"
+WARN_ALL=$(grep -c ' WARN ' "$LOG")
+WARN_LEFT=$(grep ' WARN ' "$LOG" | grep -vcE "Sharing is only supported|GlobalExceptionHandler|[Dd]eprecat|--enable-native-access|An illegal reflective|No mapping for" || true)
+echo "  · WARN 총계 $WARN_ALL · 허용목록 밖 $WARN_LEFT"
+chk "$WARN_LEFT" "0" "허용목록 밖 WARN"
+
+echo ""
+echo "=================================================================="
+echo " 통과 $PASS · 실패 $FAIL"
+echo "=================================================================="
+[ "$FAIL" -eq 0 ]

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.meditation.MeditationMapper">
+
+    <sql id="columns">
+        meditation_id, category_no, title, script, audio_key, duration_sec, sort_no, status
+    </sql>
+
+    <select id="findAllActive" resultType="com.templestamp.meditation.Meditation">
+        SELECT <include refid="columns"/>
+        FROM meditation
+        WHERE status = 'ACTIVE'
+        <if test="category != null and category != ''">
+            AND category_no = #{category}
+        </if>
+        ORDER BY category_no, sort_no, meditation_id
+    </select>
+
+    <select id="findById" resultType="com.templestamp.meditation.Meditation">
+        SELECT <include refid="columns"/> FROM meditation WHERE meditation_id = #{meditationId}
+    </select>
+
+    <select id="countByCategory" resultType="com.templestamp.meditation.CategoryCountRow">
+        SELECT category_no, COUNT(*) AS count
+        FROM meditation
+        WHERE status = 'ACTIVE'
+        GROUP BY category_no
+        ORDER BY category_no
+    </select>
+
+</mapper>

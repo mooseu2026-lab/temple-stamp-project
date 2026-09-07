@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.templestamp.user.UserMapper">
+
+    <!-- SELECT * 대신 컬럼 고정. 컬럼 추가·순서 변경에 안전 -->
+    <sql id="userColumns">
+        user_id, email, password, nickname, role, tier, locale,
+        notification_enabled, login_fail_count, locked_until, created_at, updated_at
+    </sql>
+
+    <select id="existsByEmail" resultType="int">
+        SELECT EXISTS (SELECT 1 FROM users WHERE email = #{email})
+    </select>
+
+    <!-- role / locale / notification_enabled 가 null 이면 컬럼 자체를 빼서 DB DEFAULT 가 들어가게 함 -->
+    <insert id="save" useGeneratedKeys="true" keyProperty="userId">
+        INSERT INTO users
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            email, password, nickname, tier,
+            <if test="role != null">role,</if>
+            <if test="locale != null">locale,</if>
+            <if test="notificationEnabled != null">notification_enabled,</if>
+        </trim>
+        <trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+            #{email}, #{password}, #{nickname}, #{tier},
+            <if test="role != null">#{role},</if>
+            <if test="locale != null">#{locale},</if>
+            <if test="notificationEnabled != null">#{notificationEnabled},</if>
+        </trim>
+    </insert>
+
+    <select id="findByEmail" resultType="com.templestamp.user.User">
+        SELECT <include refid="userColumns"/> FROM users WHERE email = #{email}
+    </select>
+
+  <!--
+    사용자 단위 잠금. 값이 필요해서가 아니라 순서를 잡으려고 읽는다 —
+    잠금 순서 user → stamp/slot → completion → certificate/reward 의 첫 칸(챕터 7 보강 B-1).
+  -->
+  <select id="lockById" resultType="int">
+    SELECT user_id FROM users WHERE user_id = #{userId} FOR UPDATE
+  </select>
+
+  <select id="findById" resultType="com.templestamp.user.User">
+        SELECT <include refid="userColumns"/> FROM users WHERE user_id = #{userId}
+    </select>
+
+    <!-- 싱글페이지 등 tier 만 필요한 요청에서 12컬럼 전체 조회를 피한다 -->
+    <select id="findTier" resultType="string">
+        SELECT tier FROM users WHERE user_id = #{userId}
+    </select>
+
+    <select id="findLocale" resultType="string">
+        SELECT locale FROM users WHERE user_id = #{userId}
+    </select>
+
+    <!--
+        읽고-판단하고-쓰는 두 단계로 나누지 않는다. 동시 요청에도 횟수가 정확하다.
+
+        ★ 두 대입의 순서가 의미를 바꾼다. MySQL 은 SET 절을 왼쪽부터 평가하고, 뒤에 오는 식은
+          앞에서 이미 바뀐 값을 본다(표준 SQL 과 다른 점이다). login_fail_count 를 먼저 올리면
+          아래 CASE 의 login_fail_count 가 이미 증가한 값이라 사실상 "+2" 로 판정돼
+          5회가 아니라 4회에 잠긴다. locked_until 을 먼저 두어 CASE 가 증가 전 값을 읽게 한다.
+          (실측: 3 → 1회 실패에 잠김. AuthFlowIntegrationTest 가 회차별 카운트를 단언한다)
+    -->
+    <update id="recordLoginFail">
+        UPDATE users
+        SET locked_until = CASE
+                WHEN login_fail_count + 1 >= #{maxFail}
+                THEN DATE_ADD(NOW(), INTERVAL #{lockMinutes} MINUTE)
+                ELSE locked_until
+            END,
+            login_fail_count = login_fail_count + 1
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="resetLoginFail">
+        UPDATE users SET login_fail_count = 0, locked_until = NULL WHERE user_id = #{userId}
+    </update>
+
+    <update id="updateProfile">
+        UPDATE users
+        SET nickname = #{nickname},
+            locale = #{locale},
+            notification_enabled = #{notificationEnabled}
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="updateTier">
+        UPDATE users SET tier = #{tier} WHERE user_id = #{userId}
+    </update>
+
+    <update id="updatePassword">
+        UPDATE users SET password = #{password} WHERE user_id = #{userId}
+    </update>
+
+</mapper>
