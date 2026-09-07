@@ -1,0 +1,887 @@
+{
+  "$설명": "사찰 대표 사진의 출처·라이선스 장부. 파일을 넣기 전에 이 표부터 채운다 — 출처를 모르는 사진은 쓰지 않는다(사찰조사 §0-4).",
+  "$규칙": "license 가 비어 있거나 확인되지 않은 항목은 화면에서 한지 텍스처 폴백으로 대체한다. file 은 frontend/public/sites/ 아래의 상대 경로다.",
+  "$지침": "backend/docs/content/사진수집_지침.md",
+  "items": [
+    {
+      "siteId": 990389,
+      "name": "통도사 서운암",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990390,
+      "name": "금수암",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990391,
+      "name": "다솔사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990392,
+      "name": "쌍계사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990393,
+      "name": "해인사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990394,
+      "name": "범어사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990395,
+      "name": "대원사(산청)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990396,
+      "name": "내원정사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990397,
+      "name": "선암사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990398,
+      "name": "옥천사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990399,
+      "name": "표충사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990400,
+      "name": "성주사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990401,
+      "name": "문수암",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990402,
+      "name": "용문사(남해)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990403,
+      "name": "홍법사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990404,
+      "name": "용화사(통영)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990405,
+      "name": "용문사(예천)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990406,
+      "name": "동화사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990407,
+      "name": "은해사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990408,
+      "name": "봉정사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990409,
+      "name": "축서사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990410,
+      "name": "고운사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990411,
+      "name": "희방사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990412,
+      "name": "보경사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990413,
+      "name": "기림사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990414,
+      "name": "직지사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990415,
+      "name": "도리사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990416,
+      "name": "골굴사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990417,
+      "name": "현덕사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990418,
+      "name": "망경산사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990419,
+      "name": "월정사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990420,
+      "name": "백담사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990421,
+      "name": "보현사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990422,
+      "name": "청평사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990423,
+      "name": "명주사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990424,
+      "name": "삼운사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990425,
+      "name": "삼화사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990426,
+      "name": "용연사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990427,
+      "name": "화암사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990428,
+      "name": "신흥사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990429,
+      "name": "건봉사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990430,
+      "name": "구룡사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990431,
+      "name": "법흥사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990432,
+      "name": "백양사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990433,
+      "name": "백련사(강진)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990434,
+      "name": "대흥사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990435,
+      "name": "송광사(순천)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990436,
+      "name": "화엄사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990437,
+      "name": "도갑사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990438,
+      "name": "무위사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990439,
+      "name": "운주사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990440,
+      "name": "증심사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990441,
+      "name": "천은사(구례)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990442,
+      "name": "대원사(보성)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990443,
+      "name": "무각사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990444,
+      "name": "미황사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990445,
+      "name": "불갑사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990446,
+      "name": "향일암",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990447,
+      "name": "실상사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990448,
+      "name": "송광사(완주)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990449,
+      "name": "귀정사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990450,
+      "name": "내소사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990451,
+      "name": "개암사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990452,
+      "name": "금당사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990453,
+      "name": "안국사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990454,
+      "name": "금산사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990455,
+      "name": "선운사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990456,
+      "name": "영평사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990457,
+      "name": "학림사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990458,
+      "name": "수덕사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990459,
+      "name": "마곡사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990460,
+      "name": "무량사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990461,
+      "name": "서광사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990462,
+      "name": "갑사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990463,
+      "name": "부석사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990464,
+      "name": "미륵대흥사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990465,
+      "name": "석종사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990466,
+      "name": "반야사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990467,
+      "name": "용화사(청주)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990468,
+      "name": "법주사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990469,
+      "name": "영국사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990470,
+      "name": "진관사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990471,
+      "name": "국제선센터",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990472,
+      "name": "화계사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990473,
+      "name": "길상사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990474,
+      "name": "금선사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990475,
+      "name": "경국사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990476,
+      "name": "수국사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990477,
+      "name": "조계사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990478,
+      "name": "도선사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990479,
+      "name": "봉녕사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990480,
+      "name": "봉선사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990481,
+      "name": "수도사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990482,
+      "name": "연등국제선원",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990483,
+      "name": "법륜사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990484,
+      "name": "봉인사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990485,
+      "name": "묘적사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990486,
+      "name": "백련사(가평)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990487,
+      "name": "회암사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990488,
+      "name": "용문사(양평)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990489,
+      "name": "흥국사(고양)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990490,
+      "name": "연주암",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990491,
+      "name": "용주사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990492,
+      "name": "신륵사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990493,
+      "name": "전등사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990494,
+      "name": "능가사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990495,
+      "name": "흥국사(여수)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990496,
+      "name": "수타사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990497,
+      "name": "칠장사",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    },
+    {
+      "siteId": 990498,
+      "name": "천은사(삼척)",
+      "file": "",
+      "source": "",
+      "license": "",
+      "url": ""
+    }
+  ]
+}

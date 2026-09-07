@@ -22,6 +22,12 @@ const { execFileSync } = require('child_process');
 
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
 const APPLY = process.argv.includes('--apply');
+/* --by-address — 주소<b>만</b>으로 찾는다(C1 STEP 5).
+   기본 모드는 주소가 없으면 이름·구분으로 넘어가는데, 그러면 동명이찰에서 엉뚱한 절이 잡힐 여지가 남는다.
+   조사 자료의 주소가 정정된 뒤(예: 서산 서광사)에는 그 주소 하나만 믿고 찾는 편이 정확하다.
+   읽는 파일도 다르다 — 이 모드는 site-enrich.csv 의 roadAddress 를 쓴다. 그쪽에만 정정이 반영돼 있다. */
+const BY_ADDRESS = process.argv.includes('--by-address');
+const ENRICH_CSV = 'backend/docs/content/site-enrich.csv';
 const DB = 'temple_stamp_project';
 const MYSQL = process.env.MYSQL_BIN || 'mysql';
 const DB_USER = process.env.DB_USER || 'root';
@@ -118,6 +124,19 @@ function sameArea(expectAddr, disamb, place) {
   const byKey = new Map();
   for (const r of csv) byKey.set(`${r.region_code}:${r.site_name_ko}:${r.disambiguation || ''}`, r);
 
+  /* --by-address 는 site-enrich.csv 를 siteId 로 찾는다. 정정된 주소가 그쪽에만 있다. */
+  const enrichById = new Map();
+  if (BY_ADDRESS) {
+    if (!fs.existsSync(ENRICH_CSV)) {
+      console.error(`--by-address 인데 ${ENRICH_CSV} 가 없다. site-enrich-build.js 를 먼저 돌린다.`);
+      process.exit(1);
+    }
+    for (const r of readCsv(ENRICH_CSV)) {
+      if (r.siteId) enrichById.set(Number(r.siteId), r);
+    }
+    console.log(`--by-address — ${ENRICH_CSV} ${enrichById.size}행을 읽었다`);
+  }
+
   // --recheck 를 주면 이미 채운 곳까지 다시 본다(규칙이 바뀌었을 때 되짚기 위해).
   const where = process.argv.includes('--recheck') ? '1 = 1' : 'latitude = 0';
   const zero = sql(`SELECT site_id, name, seed_key FROM site WHERE seed_key IS NOT NULL AND ${where} ORDER BY seed_key;`)
@@ -136,6 +155,33 @@ function sameArea(expectAddr, disamb, place) {
       ...(String(road || '').match(/[가-힣]+(?:시|군|구)/g) || []),
       ...(String(road || '').match(/[가-힣]+(?:읍|면|동)/g) || []),
     ].filter((v, i, a) => a.indexOf(v) === i);
+
+    /* --by-address: 주소 하나만 쓴다. 없으면 그 사찰은 건너뛴다 —
+       이름으로 물러서면 동명이찰에서 다른 절이 잡히고, 틀린 좌표는 없는 좌표보다 나쁘다. */
+    if (BY_ADDRESS) {
+      const er = enrichById.get(s.id);
+      const addr = er ? (er.roadAddress || '').trim() : '';
+      if (!addr) {
+        unresolved.push({ ...s, road: '', disamb, tried: [{ label: '주소 없음', places: ['site-enrich.csv 에 roadAddress 가 비어 있다'] }] });
+        console.log(`  ✗ ${s.name} — 주소 없음(건너뜀)`);
+        continue;
+      }
+      const r = await api('/api/admin/kakao/places?query=' + encodeURIComponent(addr) + '&page=1&size=5', { headers: auth });
+      await new Promise((r2) => setTimeout(r2, 1000));
+      const places = r.status === 200 ? (r.json.data.places || []) : [];
+      const near = places.filter((p) => p.latitude);
+      console.log(`  · ${s.name} ← 주소 "${addr}" → ${near.length}건`);
+      near.slice(0, 3).forEach((p) => console.log(`      ${p.placeName} [${p.categoryName || '-'}] ${p.roadAddressName || p.addressName || ''} (${p.latitude}, ${p.longitude})`));
+      if (near.length) {
+        const best = near[0];
+        filled.push({ ...s, expectAddr: addr, disamb, lat: best.latitude, lng: best.longitude,
+          via: '주소(--by-address)', source: best.placeName, nameRank: nameRank(best.placeName, s.name),
+          matchedAddr: best.roadAddressName || best.addressName, category: best.categoryName });
+      } else {
+        unresolved.push({ ...s, road: addr, disamb, tried: [{ label: '주소', q: addr, places: ['0건'] }] });
+      }
+      continue;   // --apply 는 이 모드에서 하지 않는다 — 반영은 11-A STEP 5 가 한다
+    }
 
     const queries = [];
     if (road) queries.push({ label: '주소', q: road });

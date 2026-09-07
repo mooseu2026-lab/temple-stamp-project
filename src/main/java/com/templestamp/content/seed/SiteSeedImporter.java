@@ -5,6 +5,8 @@ import com.templestamp.admin.AdminSiteService;
 import com.templestamp.admin.dto.AdminCourseSaveRequest;
 import com.templestamp.admin.dto.AdminSiteSaveRequest;
 import com.templestamp.admin.dto.SiteBadgeSaveRequest;
+import com.templestamp.admin.dto.SiteViewpointSaveRequest;
+import com.templestamp.admin.dto.StatusChangeRequest;
 import com.templestamp.course.CourseMapper;
 import com.templestamp.course.CourseSiteMapper;
 import com.templestamp.course.Region;
@@ -67,6 +69,13 @@ public class SiteSeedImporter implements CommandLineRunner {
     private static final String CONGESTED_MARK = "[Q3 확정]";
 
     /**
+     * note 에 이 말이 있으면 사찰 행은 만들되 <b>INACTIVE 로 고정</b>한다.
+     * 지우지 않는 이유는 조사 결과를 남겨 두기 위해서다 — 복원이 끝나면 상태만 올리면 된다.
+     * (2026-09-07 예성 정정 §0-2 — 의성 고운사)
+     */
+    private static final String INACTIVE_MARK = "[DB 제외]";
+
+    /**
      * CSV 의 {@code region_code} → DB {@code region.code}. <b>이름 기준 매핑이고 DB 코드는 바꾸지 않는다.</b>
      * 조사 CSV 는 광역시를 도에 붙여 적었고(부산/경남·대구/경북·전남/광주) DB 는 도 이름만 쓴다.
      * 같은 이름이면 그대로 통과시키므로 여기에는 어긋나는 셋만 적는다.
@@ -98,6 +107,12 @@ public class SiteSeedImporter implements CommandLineRunner {
         Map<String, Long> elementBySort = new HashMap<>();
         siteElementMapper.findDictionary()
                 .forEach(m -> elementBySort.put(String.valueOf(m.get("sortNo")), ((Number) m.get("elementId")).longValue()));
+
+        // 같은 이름의 절이 여럿이면 화면에서 가를 수 없다 — "용문사" 가 셋이다.
+        // 표시 이름에만 시군구를 붙이고 seed_key 는 <b>원래 이름 그대로</b> 둔다.
+        // 키가 바뀌면 이미 올라간 DB 에서 같은 절이 하나 더 생긴다.
+        Map<String, Integer> nameCount = new HashMap<>();
+        sites.forEach(r -> nameCount.merge(r.get("site_name_ko"), 1, Integer::sum));
 
         Map<String, Long> siteIdBySeedKey = new LinkedHashMap<>();
         List<String> congestedKeys = new ArrayList<>();
@@ -151,6 +166,17 @@ public class SiteSeedImporter implements CommandLineRunner {
             }
             if (r.get("flower_badge") != null) {
                 adminSiteService.upsertBadge(siteId, new SiteBadgeSaveRequest("FLOWER", r.get("flower_badge")));
+            }
+            // 뷰포인트 — 조사에 한 덩이만 있다("어디서 무엇을 보는가"). 시기·볼거리 칸은 현장에서 채운다.
+            // 없는 칸을 그럴듯한 문장으로 메우면 나중에 조사 결과인지 추측인지 아무도 모른다.
+            if (r.get("viewpoint") != null) {
+                adminSiteService.upsertViewpoint(siteId,
+                        new SiteViewpointSaveRequest(1, trim255(r.get("viewpoint")), null, null));
+            }
+            // [DB 제외] — 행은 남기고 상태만 내린다(§0-2). ACTIVE 확장·코스 배정에서 저절로 빠진다.
+            if (excluded(r.get("note"))) {
+                adminSiteService.changeStatus(siteId, new StatusChangeRequest("INACTIVE"));
+                report.add("DB 제외(INACTIVE 고정): " + key);
             }
         }
 
@@ -297,6 +323,29 @@ public class SiteSeedImporter implements CommandLineRunner {
 
     private static boolean congested(String note) {
         return note != null && note.contains(CONGESTED_MARK);
+    }
+
+    private static boolean excluded(String note) {
+        return note != null && note.contains(INACTIVE_MARK);
+    }
+
+    /**
+     * 화면에 보일 이름. 같은 이름이 둘 이상일 때만 시군구를 괄호로 붙인다 — "용문사(예천)".
+     * 구분(disambiguation)이 "예천 소백산" 처럼 [시군구] [산이름] 이라 앞 토막을 쓴다.
+     */
+    private static String displayName(Map<String, String> r, Map<String, Integer> nameCount) {
+        String name = r.get("site_name_ko");
+        if (nameCount.getOrDefault(name, 0) < 2) {
+            return name;
+        }
+        String disamb = Objects.toString(r.get("disambiguation"), "").trim();
+        String first = disamb.isEmpty() ? "" : disamb.split("\\s+")[0];
+        return first.isEmpty() || first.contains("암자") ? name : name + "(" + first + ")";
+    }
+
+    /** site_viewpoint.location_desc 는 255자다. 넘치면 잘라 넣는다 — 통째로 버리는 것보다 낫다. */
+    private static String trim255(String v) {
+        return v.length() <= 255 ? v : v.substring(0, 255);
     }
 
     /** 그 구의 MAIN 첫 행. 건너뛴 행(묘각사)과 미등록 사찰은 대표가 될 수 없다. */

@@ -133,7 +133,9 @@ CREATE TABLE IF NOT EXISTS site (
     qr_location_hint VARCHAR(255) NULL,             -- QR 부착 위치 안내 (예: 대웅전 앞 안내판 우측)
     parking_info VARCHAR(500) NULL,                 -- 주차 안내 (라이더 정보 포함)
     access_info VARCHAR(500) NULL,                  -- 진입로 안내 (포장 여부·경사)
-    meal_available VARCHAR(20) NULL,                -- 공양 가능 등급. 값 체계 미확정
+    -- 공양 가능 등급. NONE(없음) / TEMPLE_MEAL(사찰음식·템플스테이) / PUBLIC_MEAL(대중공양) / NEARBY(인근 식당).
+    -- NULL 은 "없다" 가 아니라 "아직 모른다" 다 — 확인 전에 NONE 을 넣으면 안 된다(C1).
+    meal_available VARCHAR(20) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',    -- 협의 완료(ACTIVE) 사찰만 노출
     seed_key VARCHAR(80) NULL,                      -- v4 시드 멱등 키: REGION:이름:구분. 재실행 시 중복 생성 방지
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -141,7 +143,9 @@ CREATE TABLE IF NOT EXISTS site (
     INDEX idx_site_status (status),
     CONSTRAINT uk_site_seed_key UNIQUE (seed_key),
     CONSTRAINT chk_site_status CHECK (status IN ('DRAFT','ACTIVE','INACTIVE')),
-    CONSTRAINT chk_site_radius CHECK (verify_radius > 0)
+    CONSTRAINT chk_site_radius CHECK (verify_radius > 0),
+    CONSTRAINT chk_site_meal CHECK
+        (meal_available IS NULL OR meal_available IN ('NONE','TEMPLE_MEAL','PUBLIC_MEAL','NEARBY'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 8. site_i18n — 사찰 다국어
