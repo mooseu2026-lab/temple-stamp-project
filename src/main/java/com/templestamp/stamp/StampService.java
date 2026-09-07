@@ -75,6 +75,7 @@ public class StampService {
     private final CompletionService completionService;
     private final StampExpireService stampExpireService;   // REQUIRES_NEW — 만료를 예외보다 먼저 남긴다
     private final SlotSiteMapper slotSiteMapper;           // v4 — 이 자리의 후보인가
+    private final com.templestamp.upload.UploadService uploadService;
     private final SiteMapper siteMapper;                   // 409 메시지·응답의 사찰 이름
     private final StampProperties stampProperties;
     private final ApplicationEventPublisher eventPublisher;   // 심사 뒤 재집계를 커밋 밖으로 보낸다
@@ -203,6 +204,7 @@ public class StampService {
 
         if (photoKey != null) {
             storageClient.verifyOwnedKey(photoKey, UploadPurpose.PHOTO, userId);
+            uploadService.requireStored(photoKey);   // 키만 있고 파일이 없는 것을 여기서 막는다
             photoService.register(userId, stamp.getSiteId(), photoKey,
                     Boolean.TRUE.equals(request.hasOtherFace()));
         }

@@ -37,6 +37,7 @@ public class PhotoService {
     private final CourseSiteMapper courseSiteMapper;
     private final ThinkboxService thinkboxService;
     private final ObjectStorageClient storageClient;
+    private final UploadService uploadService;
 
     /* ---------------- 개인 소장 (챕터 6) ---------------- */
 
@@ -47,6 +48,10 @@ public class PhotoService {
             throw new BusinessException(ErrorCode.COMMON_4000,
                     List.of(new ErrorResponse.FieldError("photoKey", "본인이 발급받은 사진 키가 아닙니다.")));
         }
+        // 키가 내 것이어도 <b>파일이 없으면</b> 안 된다. 지금까지는 키만 받아 저장했고,
+        // 저장소에 바이트가 없어도 아무도 몰랐다(11-A0 — PHOTO/ 폴더 파일 0개).
+        uploadService.requireStored(request.photoKey());
+
         Site site = siteMapper.findActiveById(siteId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SITE_4040));
 

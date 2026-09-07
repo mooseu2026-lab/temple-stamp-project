@@ -14,6 +14,7 @@ import com.templestamp.admin.dto.SiteViewpointSaveRequest;
 import com.templestamp.admin.dto.StatusChangeRequest;
 import com.templestamp.admin.dto.QrIssueResponse;
 import com.templestamp.course.CourseService;
+import com.templestamp.global.config.AppProperties;
 import com.templestamp.course.dto.CourseSiteRow;
 import com.templestamp.global.error.BusinessException;
 import com.templestamp.global.error.ErrorCode;
@@ -21,6 +22,9 @@ import com.templestamp.global.response.ApiResponse;
 import com.templestamp.global.response.PageResponse;
 import com.templestamp.site.Site;
 import com.templestamp.site.SiteService;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import com.templestamp.site.dto.SiteResponse;
 import com.templestamp.stamp.QrTokenProvider;
 import jakarta.validation.Valid;
@@ -69,6 +73,7 @@ public class AdminSiteController {
     private final CourseService courseService;
     private final QrTokenProvider qrTokenProvider;
     private final AdminSiteService adminSiteService;
+    private final AppProperties appProperties;   // QR 에 구울 프론트 주소
 
     /**
      * 관리자 목록·검색. 옛 공개 {@code GET /api/sites} 를 여기로 옮겼다 —
@@ -142,7 +147,7 @@ public class AdminSiteController {
                 slot.getCourseSiteId(),
                 site.getName(),
                 token.token(),
-                toBase64Png(token.token()),
+                toBase64Png(checkinUrl(token.token())),
                 site.getQrVersion(),
                 toLocal(token.issuedAt()),
                 toLocal(token.expiresAt())));
@@ -155,6 +160,26 @@ public class AdminSiteController {
     @PostMapping("/{siteId}/qr/rotate")
     public ApiResponse<Integer> rotateQr(@PathVariable Long siteId) {
         return ApiResponse.ok(siteService.bumpQrVersion(siteId));
+    }
+
+    /**
+     * QR 이미지에 <b>굽는 내용</b>. 토큰만 굽지 않고 체크인 주소를 굽는다.
+     * <p>
+     * 기본 카메라로 찍은 사람이 바로 열 수 있어야 하기 때문이다 — 토큰만 굽혀 있으면
+     * 카메라가 "djF8MXwx…" 라는 글자를 보여 주고 거기서 끝난다. 앱을 깔지 않은 사람은
+     * 무엇을 해야 하는지 알 길이 없다. 프론트 라우트 {@code /checkin?token=} 은 이미 있다.
+     * <p>
+     * 서버가 받는 것은 여전히 <b>토큰만</b>이다({@code QrVerifyRequest.qrToken}) —
+     * 주소에서 토큰을 뽑는 일은 프론트가 한다. 서버가 URL 을 받으면 파싱이 하나 더 생기고,
+     * 그 파싱은 사용자 입력을 다루는 자리가 된다.
+     */
+    private String checkinUrl(String token) {
+        String base = appProperties.frontendUrl();
+        if (base == null || base.isBlank()) {
+            throw new IllegalStateException("app.frontend-url 이 비어 있다 — QR 에 구울 주소가 없다");
+        }
+        String trimmed = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        return trimmed + "/checkin?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
     }
 
     private String toBase64Png(String content) {

@@ -4,10 +4,10 @@
 컬렉션 두 벌(`temple-stamp-all`·`w2-hoehyang`)을 함께 읽는다.
 
 ```
-엔드포인트 91 · ✅ 91 · ⚠ 0(그중 ch9 0) · ❌ 0
+엔드포인트 92 · ✅ 91 · ⚠ 1(그중 ch9 0) · ❌ 0
 ```
 
-ch9 를 뺀 ⚠ 가 **0** 이다 — 챕터 9 몫(전자책·인쇄)만 남았다.
+ch9 를 뺀 ⚠ 가 **1** 이다 — 챕터 9 몫(전자책·인쇄)만 남았다.
 접근 권한은 `SecurityConfig` 의 매처를 그대로 읽어 판정했다 — 손으로 적은 목록이 아니다.
 
 | # | 메서드 경로 | 인증 | newman 요청 id | 판정 |
@@ -94,15 +94,16 @@ ch9 를 뺀 ⚠ 가 **0** 이다 — 챕터 9 몫(전자책·인쇄)만 남았�
 | 80 | DELETE `/api/thinkbox/{thinkboxId}` | USER | R:R04 · X:X18 · X:X45 | ✅ |
 | 81 | PATCH `/api/thinkbox/{thinkboxId}` | USER | V:V12 · V:V13 · R:R03 | ✅ |
 | 82 | GET `/api/thinkbox/flashback` | USER | V:V14 · V:V15 | ✅ |
-| 83 | GET `/api/uploads/presign` | USER | U:U-D0d · V:V01 · V:V02 | ✅ |
-| 84 | DELETE `/api/users/me` | USER | U:U-D1 · U:U-D2 · E:E25 | ✅ |
-| 85 | GET `/api/users/me` | USER | U:U01 · U:U02 · U:U-D0c | ✅ |
-| 86 | PATCH `/api/users/me` | USER | U:U03 · U:U04 · G:G01 | ✅ |
-| 87 | GET `/api/users/me/agreements` | USER | U:U07 · U:U08b | ✅ |
-| 88 | POST `/api/users/me/agreements` | USER | U:U05 · U:U06 · U:U08c | ✅ |
-| 89 | DELETE `/api/users/me/agreements/{agreementType}` | USER | U:U08a | ✅ |
-| 90 | GET `/api/verses` | 없음 | M:M14 | ✅ |
-| 91 | GET `/api/verses/{verseNo}` | 없음 | M:M15 · M:M16 | ✅ |
+| 83 | PUT `/api/uploads/**` | USER | — | ⚠ 미검증 |
+| 84 | GET `/api/uploads/presign` | USER | U:U-D0d · V:V01 · V:V02 | ✅ |
+| 85 | DELETE `/api/users/me` | USER | U:U-D1 · U:U-D2 · E:E25 | ✅ |
+| 86 | GET `/api/users/me` | USER | U:U01 · U:U02 · U:U-D0c | ✅ |
+| 87 | PATCH `/api/users/me` | USER | U:U03 · U:U04 · G:G01 | ✅ |
+| 88 | GET `/api/users/me/agreements` | USER | U:U07 · U:U08b | ✅ |
+| 89 | POST `/api/users/me/agreements` | USER | U:U05 · U:U06 · U:U08c | ✅ |
+| 90 | DELETE `/api/users/me/agreements/{agreementType}` | USER | U:U08a | ✅ |
+| 91 | GET `/api/verses` | 없음 | M:M14 | ✅ |
+| 92 | GET `/api/verses/{verseNo}` | 없음 | M:M15 · M:M16 | ✅ |
 
 ## 비로그인 허용 목록 (SecurityConfig)
 
@@ -125,3 +126,9 @@ ch9 를 뺀 ⚠ 가 **0** 이다 — 챕터 9 몫(전자책·인쇄)만 남았�
 ## 삭제의 응답
 
 DELETE 다섯(탈퇴 · 인쇄 취소 · 생각상자 · 약관 철회 · 참배 요소)은 전부 **204 · 본문 없음**이다. 실패는 그대로 봉투가 실린다(404 · 409).
+
+## 미검증 엔드포인트
+
+| 메서드 | 경로 | 인증 | 왜 |
+|---|---|---|---|
+| PUT | `/api/uploads/**` | USER |  |

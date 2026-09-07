@@ -16,6 +16,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.UUID;
@@ -91,6 +92,33 @@ public class ObjectStorageClient {
         if (parts.length != 3
                 || !parts[0].equals(purpose.name())
                 || !parts[1].equals(String.valueOf(userId))) {
+            throw new BusinessException(ErrorCode.UPLOAD_4001);
+        }
+    }
+
+    /**
+     * presign 이 만든 서명이 맞는지, 아직 살아 있는지 본다(챕터 11-A).
+     * <p>
+     * 지금까지 {@link #sign} 은 만들기만 하고 <b>검사한 적이 없었다</b> — 검사 주체가
+     * 운영의 S3 라는 전제였기 때문이다. provider=local 에는 그 서버가 없어서 사진 바이트가
+     * 한 장도 저장되지 않았고, 그래서 우리 앱이 수신 문을 열게 됐다. 문을 열면 검사도 우리 몫이다.
+     * <p>
+     * 만료를 먼저 본다 — 서명이 맞아도 시간이 지났으면 못 쓴다. 그리고 비교는
+     * {@link MessageDigest#isEqual} 로 한다. {@code equals} 는 첫 다른 글자에서 바로 끝나
+     * 걸린 시간으로 앞부분이 맞았는지가 새어 나간다(타이밍 공격).
+     *
+     * @throws BusinessException 서명이 다르거나 만료면 {@code UPLOAD-4001}
+     */
+    public void verifySignature(String method, String fileKey, long expiresAt, String signature) {
+        if (signature == null || signature.isBlank()) {
+            throw new BusinessException(ErrorCode.UPLOAD_4001);
+        }
+        if (Instant.now().getEpochSecond() > expiresAt) {
+            throw new BusinessException(ErrorCode.UPLOAD_4001);
+        }
+        byte[] want = sign(method, fileKey, expiresAt).getBytes(StandardCharsets.UTF_8);
+        byte[] got = signature.getBytes(StandardCharsets.UTF_8);
+        if (!MessageDigest.isEqual(want, got)) {
             throw new BusinessException(ErrorCode.UPLOAD_4001);
         }
     }

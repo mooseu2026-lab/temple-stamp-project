@@ -80,12 +80,17 @@ logging:
 app:
   jwt:
     secret: ${JWT_SECRET}          # Base64 인코딩된 32바이트 이상
-    access-seconds: 1800           # 액세스 30분 (확정)
+    # 액세스 30분(확정). 환경변수로 뺀 이유는 <b>만료 → refresh 회전</b> 을 재현하기 위해서다 —
+    # 30분을 기다릴 수 없으니 local 에서 10초로 띄워 본다. 운영은 기본값 1800 을 그대로 쓴다.
+    access-seconds: ${JWT_ACCESS_TTL:1800}
     refresh-days: 14               # 리프레시 14일 (기획 명세 · 챕터 10 에서 7 → 14 로 되돌림)
   qr:
     secret: ${QR_SECRET}           # 로그인 키와 반드시 다른 값
     # 현장 QR 유효 시간(초). 상설 안내판은 발급 시 개별로 길게 줄 수 있다.
     token-seconds: 300
+  # QR 이미지에 굽는 주소의 앞부분. 종이에 인쇄되는 값이라 <b>운영에서 틀리면 되돌릴 수 없다</b> —
+  # 다시 붙이러 사찰에 가야 한다. prod 는 기본값 없이 ${FRONTEND_URL} 이라 없으면 기동이 멈춘다.
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
   # refresh 쿠키의 Secure 속성. 기본(local)은 http 라 false.
   # prod 프로파일에서 true 로 덮어쓴다. application-prod.yml 참고.
   cookie:
@@ -124,10 +129,15 @@ storage:
   # local 이면 presign 이 로컬 스텁 URL 을 만든다. 실제 버킷은 prod 에서 교체.
   provider: local
   bucket: temple-stamp-local
-  endpoint: http://localhost:9000
+  # presign 이 만드는 uploadUrl 의 앞부분. provider=local 이면 <b>우리 앱</b>을 가리킨다 —
+  # :9000 에는 아무 서버도 없어서 사진 바이트가 한 장도 저장되지 않았다(11-A0 실측).
+  # S3 로 바꿀 때는 이 값만 S3 주소로 되돌리면 되고 프론트 계약(uploadUrl·fileKey)은 그대로다.
+  endpoint: ${STORAGE_ENDPOINT:http://localhost:8080/api/uploads}
   secret-key: ${STORAGE_SECRET_KEY:local-storage-secret}
   presign-seconds: 300
-  max-upload-bytes: 10485760
+  # 사진 한 장의 상한(바이트). 2MB — 휴대폰 사진 한 장은 보통 그 아래다.
+  # 넘으면 413 COMMON-4130. 전자책이 1200px 로 줄여 넣으므로 원본이 클 이유가 없다.
+  max-upload-bytes: 2097152
   # provider=local 일 때 파일 바이트를 두는 자리. 비우면 임시 디렉터리 아래로 간다.
   # 운영(S3)에서는 쓰이지 않는다.
   local-dir: ${STORAGE_LOCAL_DIR:}

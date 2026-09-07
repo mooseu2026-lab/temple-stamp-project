@@ -176,7 +176,8 @@ public class EbookService {
             storageClient.put(key, pdf.bytes(), "application/pdf");
             ebookMapper.markReady(ebookId, key, pdf.pageCount(), pdf.bytes().length);
             trimReadyBooks(row.getUserId());
-            log.info("전자책 완성. ebookId={}, pages={}, bytes={}", ebookId, pdf.pageCount(), pdf.bytes().length);
+            log.info("전자책 완성. ebookId={}, pages={}, bytes={}, 사진 누락 {}",
+                    ebookId, pdf.pageCount(), pdf.bytes().length, pdf.missingPhotos());
             return true;
         } catch (Exception e) {
             log.warn("전자책 조판 실패. ebookId={}", ebookId, e);

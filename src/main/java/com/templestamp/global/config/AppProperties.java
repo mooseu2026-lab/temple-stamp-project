@@ -14,7 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;  // 
 @ConfigurationProperties(prefix = "app")                        // yml 의 app.* 을 이 클래스에 담는다
                                                                 // ※ 이것만으로는 빈이 안 됨.
                                                                 //   메인 클래스의 @ConfigurationPropertiesScan 이 스캔해야 함
-public record AppProperties(Jwt jwt, Qr qr, Cookie cookie) {    // record = 불변 데이터 클래스.
+public record AppProperties(Jwt jwt, Qr qr, Cookie cookie, String frontendUrl) {    // record = 불변 데이터 클래스.
                                                                 // 괄호 안이 필드이자 생성자 파라미터.
                                                                 // 접근자는 getJwt() 가 아니라 jwt() (record 규칙)
 
@@ -26,6 +26,13 @@ public record AppProperties(Jwt jwt, Qr qr, Cookie cookie) {    // record = 불�
             int refreshDays         // app.jwt.refresh-days = 14. 쿠키 Max-Age 와 refresh_token.expires_at 이 같이 쓴다
     ) {}
 
+    /**
+     * QR 이미지에 굽는 주소의 앞부분(app.frontend-url). 예 {@code http://localhost:5173}.
+     * <p>
+     * 이 값은 <b>종이에 인쇄된다.</b> 운영에서 틀린 주소로 QR 을 찍으면 되돌리는 길이
+     * "사찰마다 다시 붙이러 간다" 뿐이다. prod 는 기본값 없이 환경변수를 요구하고,
+     * {@code RequiredEnvCheck} 가 없으면 기동을 멈춘다.
+     */
     public record Qr(
             String secret,          // app.qr.secret. 로그인 키가 털려도 QR 위조는 못 하게 분리
             long tokenSeconds       // app.qr.token-seconds. 현장 QR 기본 유효 시간(초).

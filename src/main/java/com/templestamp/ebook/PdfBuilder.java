@@ -56,8 +56,16 @@ public class PdfBuilder {
     private final EbookProperties ebookProperties;
     private final ObjectStorageClient storageClient;
 
-    /** 만들어진 책 한 권. 쪽 수와 바이트 수는 응답에 실린다. */
-    public record PdfResult(byte[] bytes, int pageCount) {
+    /** 이번 조판에서 저장소에 없던 사진 수. 한 권을 만드는 동안만 쓰는 셈이다. */
+    private final java.util.concurrent.atomic.AtomicInteger missing =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * 만들어진 책 한 권. 쪽 수와 바이트 수는 응답에 실린다.
+     * {@code missingPhotos} 는 저장소에서 못 찾아 빈자리로 둔 사진 수다 —
+     * 0 이 아니면 업로드가 어딘가에서 끊기고 있다는 뜻이라 로그로 남긴다.
+     */
+    public record PdfResult(byte[] bytes, int pageCount, int missingPhotos) {
     }
 
     /** 종류를 적지 않은 옛 호출. 표지는 개인 소장본 표지다. */
@@ -70,6 +78,7 @@ public class PdfBuilder {
      * 3·6·9·12 가 모두 "나의 순례 기록" 이면 서가에서 어느 것이 어느 것인지 알 수 없다.
      */
     public PdfResult build(EbookMaterials m, String ebookType, Integer milestone) {
+        missing.set(0);
         Document doc = new Document(PageSize.A4, 50, 50, 50, 50);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PdfWriter writer = PdfWriter.getInstance(doc, out);
@@ -91,7 +100,7 @@ public class PdfBuilder {
         colophon(doc, m, head, small);
 
         doc.close();
-        return new PdfResult(out.toByteArray(), writer.getPageNumber());
+        return new PdfResult(out.toByteArray(), writer.getPageNumber(), missing.get());
     }
 
     /* ---------------- 페이지 ---------------- */
@@ -163,6 +172,10 @@ public class PdfBuilder {
         }
         try {
             if (!storageClient.exists(photoKey)) {
+                // 빈자리로 두되 <b>조용히 넘어가지는 않는다.</b> 사진이 저장소에 없다는 것은
+                // 업로드가 끊겼다는 뜻이고, 그 사실이 로그에 없으면 아무도 모른다(11-A0).
+                missing.incrementAndGet();
+                log.warn("전자책 사진이 저장소에 없다 — 빈자리로 둔다. key={}", photoKey);
                 doc.add(new Paragraph("(사진 없음)", small));
                 return;
             }

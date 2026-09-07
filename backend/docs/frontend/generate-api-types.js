@@ -78,31 +78,52 @@ for (const f of files) {
     if (vals.length) enums.set(em[1], vals);
   }
 
-  const m = noComments.match(/public record (\w+)\s*\(([\s\S]*?)\)\s*\{/);
-  if (!m) continue;
-  const name = m[1];
-  if (['ApiResponse', 'PageResponse', 'ItemsResponse'].includes(name)) continue;
+  /* ★ match 는 첫 하나만 잡는다. 그래서 중첩 record(SitePageResponse.SiteBlock 등)가 통째로 빠졌고,
+        api-types.d.ts 에 <b>선언 없이 참조되는 이름</b>이 남았다 — tsc 가 거절하는 파일이었다.
+        matchAll 로 파일 안의 모든 record 를 잡는다. 바깥 record 가 먼저 나오므로 그것이 대표 이름이다. */
+  const outer = (noComments.match(/public record (\w+)/) || [])[1];
+  for (const m of noComments.matchAll(/public record (\w+)\s*\(([\s\S]*?)\)\s*\{/g)) {
+    let name = m[1];
+    // 규약 타입 셋은 제네릭이라 손으로 쓴 선언을 쓴다(아래 ③).
+    if (['ApiResponse', 'PageResponse', 'ItemsResponse'].includes(name)) continue;
+    // 이름이 겹치는 중첩(Counts·Item)은 바깥 이름을 앞에 붙여 갈라 둔다.
+    if (name !== outer && dtos.has(name)) name = outer + name;
 
-  const body = stripAnnotations(m[2]);
-  const fields = [];
-  let depth = 0, cur = '';
-  for (const ch of body) {
-    if (ch === '<') depth++;
-    if (ch === '>') depth--;
-    if (ch === ',' && depth === 0) { fields.push(cur); cur = ''; continue; }
-    cur += ch;
-  }
-  if (cur.trim()) fields.push(cur);
+    const body = stripAnnotations(m[2]);
+    const fields = [];
+    let depth = 0, cur = '';
+    for (const ch of body) {
+      if (ch === '<') depth++;
+      if (ch === '>') depth--;
+      if (ch === ',' && depth === 0) { fields.push(cur); cur = ''; continue; }
+      cur += ch;
+    }
+    if (cur.trim()) fields.push(cur);
 
-  const parsed = [];
-  for (const one of fields) {
-    const t = one.trim().replace(/\s+/g, ' ');
-    if (!t) continue;
-    const mm = t.match(/^(.+?)\s+([A-Za-z_$][A-Za-z0-9_$]*)$/);
-    if (!mm) continue;                                  // 모양이 아니면 버린다(조용히 틀린 줄을 내지 않는다)
-    parsed.push({ java: mm[1].trim(), name: mm[2], ts: tsType(mm[1]) });
+    const parsed = [];
+    for (const one of fields) {
+      const t = one.trim().replace(/\s+/g, ' ');
+      if (!t) continue;
+      const mm = t.match(/^(.+?)\s+([A-Za-z_$][A-Za-z0-9_$]*)$/);
+      if (!mm) continue;                                  // 모양이 아니면 버린다(조용히 틀린 줄을 내지 않는다)
+      parsed.push({ java: mm[1].trim(), name: mm[2], ts: tsType(mm[1]) });
+    }
+    if (parsed.length) dtos.set(name, { fields: parsed, file: f.split(path.sep).join('/') });
   }
-  if (parsed.length) dtos.set(name, { fields: parsed, file: f.split(path.sep).join('/') });
+
+  /* ── Lombok @Getter 조회 DTO ──
+     record 가 아니라 필드 선언이라 위 정규식에 걸리지 않는다. 그런데 record DTO 가
+     이 이름들을 참조한다(EbookMaterials.stamps: EbookStampRow[] …). 내지 않으면 미선언 타입이 남는다. */
+  const cm = noComments.match(/public class (\w+)\s*(?:extends[^{]+)?\{([\s\S]*)$/);
+  if (cm && /@Getter/.test(raw) && !dtos.has(cm[1])) {
+    const parsed = [];
+    for (const fm of cm[2].matchAll(/^\s*private\s+(?:final\s+)?([A-Za-z0-9_$.<>,\[\] ]+?)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:=[^;]*)?;/gm)) {
+      const java = fm[1].trim();
+      if (/^static/.test(java)) continue;
+      parsed.push({ java, name: fm[2], ts: tsType(java) });
+    }
+    if (parsed.length) dtos.set(cm[1], { fields: parsed, file: f.split(path.sep).join('/'), lombok: true });
+  }
 }
 
 /* ── ② 엔드포인트 ── */
@@ -159,8 +180,8 @@ out.push('export interface ApiError {');
 out.push('  /** {도메인}-{HTTP 3자리}{일련 1자리} — 예 "STAMP-4091" */');
 out.push('  code: string;');
 out.push('  message: string;');
-out.push('  /** 검증 오류일 때만 채워진다 */');
-out.push('  fields: Record<string, string> | null;');
+out.push('  /** 검증 오류일 때만 채워진다. ErrorResponse.FieldError 목록이다 — 맵이 아니다 */');
+out.push('  fields: FieldError[] | null;');
 out.push('}');
 out.push('');
 out.push('/** 페이지가 없는 목록 */');
@@ -198,13 +219,26 @@ for (const [name, d] of [...dtos.entries()].sort()) {
   out.push('');
 }
 
-out.push('// ── 엔드포인트 91 ──');
+out.push('// ── 엔드포인트 ' + eps.length + ' ──');
+out.push('//   값 목록은 api-endpoints.ts 에 있다 — .d.ts 는 선언만 담는 파일이라');
+out.push('//   초기값을 쓰면 tsc 가 TS1039 로 거절한다.');
 out.push('');
 out.push('export interface Endpoint {');
 out.push('  method: string; path: string; request: string | null; response: string; status: number;');
 out.push('}');
 out.push('');
-out.push('export const ENDPOINTS: readonly Endpoint[] = [');
+
+const text = out.join('\n');
+fs.writeFileSync('backend/docs/frontend/api-types.d.ts', text, 'utf8');
+
+/* 엔드포인트 값 — 별도 .ts */
+const epOut = [];
+epOut.push('/* temple-stamp — 엔드포인트 목록 (자동 생성 · ' + new Date().toISOString().slice(0, 10) + ')');
+epOut.push(' * 손으로 고치지 말 것. generate-api-types.js 가 컨트롤러에서 다시 뽑는다.');
+epOut.push(' */');
+epOut.push("import type { Endpoint } from './api-types';");
+epOut.push('');
+epOut.push('export const ENDPOINTS: readonly Endpoint[] = [');
 for (const e of eps.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method))) {
   const unwrap = e.ret
     .replace(/^ResponseEntity<(.*)>$/, '$1')
@@ -212,14 +246,12 @@ for (const e of eps.sort((a, b) => a.path.localeCompare(b.path) || a.method.loca
     .replace(/^(Void|void)$/, 'null') || 'null';
   const st = e.status === 'CREATED' ? 201 : e.status === 'NO_CONTENT' ? 204
     : e.status === 'ACCEPTED' ? 202 : 200;
-  out.push("  { method: '" + e.method + "', path: '" + e.path + "', request: "
+  epOut.push("  { method: '" + e.method + "', path: '" + e.path + "', request: "
     + (e.body ? "'" + e.body + "'" : 'null') + ", response: '" + unwrap + "', status: " + st + ' },');
 }
-out.push('];');
-out.push('');
-
-const text = out.join('\n');
-fs.writeFileSync('backend/docs/frontend/api-types.d.ts', text, 'utf8');
+epOut.push('] as const;');
+epOut.push('');
+fs.writeFileSync('backend/docs/frontend/api-endpoints.ts', epOut.join('\n'), 'utf8');
 
 /* ── ④ 스스로 검사한다. 조용히 깨진 타입을 내보내지 않는다. ── */
 const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
